@@ -58,7 +58,7 @@
     #transcript{flex:1;overflow-y:auto;overscroll-behavior:contain}
     .empty{padding:18px 16px;color:var(--muted);font-size:13px;line-height:1.6}.empty b{color:var(--text)}
     .line{display:grid;grid-template-columns:40px 1fr;gap:10px;padding:10px 14px;border-bottom:1px solid #12293a;font-size:14px;line-height:1.5;animation:fade .35s;cursor:default}
-    .line.alert{background:#3a0f17aa;box-shadow:inset 3px 0 var(--red)}
+    .line.alert{background:#0a2c40d9;box-shadow:inset 0 0 0 1px #61dcff40}
     .line{position:relative}
     .line.located{cursor:pointer}
     .line::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--tbar,transparent)}
@@ -69,13 +69,13 @@
     .line .t{color:var(--dim);font:700 11px ui-monospace,Menlo,monospace;padding-top:3px}
     .line .x{color:#d9ebf2;overflow-wrap:anywhere}
     mark{background:#ff864e33;color:#ffb48f;border-radius:3px;padding:0 2px}
-    mark.w{background:#ff4e5e40;color:#ff9aa4}
+    mark.w{background:#61dcff33;color:#c4f3ff}
     .fix{border-bottom:1px solid #61dcff99;cursor:help}
     .unc{text-decoration:underline dotted #e3b34f;text-underline-offset:3px;cursor:help}
     .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
     .tag{font-size:10px;font-weight:800;letter-spacing:.05em;padding:4px 8px;border-radius:5px;background:#102c3e;border:1px solid #2c5a72;color:#cfeaf5;line-height:1.3}
     .tag.loc{border-color:#4d6676;background:#14222c;color:#e3eef4}
-    .tag.al{background:#4a1018;border-color:var(--red);color:#ffc2c8}
+    .tag.al{background:#0b3346;border-color:var(--cyan);color:#cdf6ff}
     .tag.ok{background:#0f2f28;border-color:#2f7f62;color:#9ff0cf}
     .tag.pend{color:var(--muted)}
     @keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
@@ -157,9 +157,9 @@
     @keyframes pulse{70%{box-shadow:0 0 0 14px #61dcff00}100%{box-shadow:0 0 0 0 #61dcff00}}
     .maperr{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5}
 
-    #zoneEdge{position:fixed;inset:0;z-index:2600;pointer-events:none;border:3px solid var(--red);box-shadow:inset 0 0 24px #ff4e5e55;display:none;animation:edge 2.4s ease-in-out infinite}
+    #zoneEdge{position:fixed;inset:0;z-index:2600;pointer-events:none;border:3px solid var(--cyan);box-shadow:inset 0 0 24px #61dcff55;display:none;animation:edge 2.4s ease-in-out infinite}
     body.zone-active #zoneEdge{display:block}
-    @keyframes edge{50%{box-shadow:inset 0 0 6px #ff4e5e33}}
+    @keyframes edge{50%{box-shadow:inset 0 0 6px #61dcff33}}
     .play{min-height:0;width:30px;height:30px;padding:0;margin-top:7px;border-radius:8px;background:#0b1e2b;border:1px solid #2f6580;color:var(--cyan);display:grid;place-items:center;box-shadow:inset 0 0 0 1px #61dcff14;transition:border-color .15s,background .15s}
     .play svg{width:15px;height:15px}
     .play:hover{filter:none;border-color:var(--cyan);background:#0e2a3a}
@@ -174,6 +174,7 @@
     #legend{display:flex;flex-wrap:wrap;gap:5px 12px;padding:8px 14px 10px;border-top:1px solid var(--line2);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.03em}
     #legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
     #feed.collapsed #legend{display:none}
+    .tag.type.inh{border-style:dashed;opacity:.85}
     .tag.tone{background:#1a1d3d;border-color:#5b8cff;color:#c9d6ff}
     .tag.code{background:#0f3346;border-color:#2c6f8c;color:#cdf3ff;font-size:9.5px;font-weight:650;letter-spacing:.01em;padding:3px 7px;cursor:help}
     .tag.code b{color:#7fe3ff;font-weight:850;margin-right:3px;letter-spacing:.04em}
@@ -185,9 +186,9 @@
     .line.resolved .x{color:#b7cad3}
     #errbar{display:none;position:fixed;z-index:2900;left:50%;transform:translateX(-50%);top:calc(var(--top) + 78px);width:min(560px,calc(100% - 24px));padding:10px 12px;border:1px solid var(--red);border-radius:9px;background:#3a0c14f2;color:#ffc2c8;font-size:13px;line-height:1.45}
     #errbar button{margin:6px 6px 0 0;min-height:28px;padding:0 9px;font-size:10px}
-    #toast{position:fixed;z-index:3000;top:var(--top);left:50%;transform:translate(-50%,-160%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#3a0c14f2;border:1px solid var(--red);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
+    #toast{position:fixed;z-index:3000;top:var(--top);left:50%;transform:translate(-50%,-160%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#06283af2;border:1px solid var(--cyan);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
     #toast.show{transform:translate(-50%,0)}
-    #toast b{display:block;color:#ff9aa4;font-size:10px;letter-spacing:.16em;margin-bottom:5px}
+    #toast b{display:block;color:#9fe9ff;font-size:10px;letter-spacing:.16em;margin-bottom:5px}
     #toast span{font-size:14px;line-height:1.45}
 
     dialog{width:min(560px,calc(100% - 20px));max-height:calc(100% - 40px);border:1px solid var(--line);border-radius:14px;padding:0;background:#091522;color:var(--text);box-shadow:0 24px 100px #000}
@@ -385,7 +386,7 @@ const KINDS=[ // words that name the type of call (codes are read separately, wi
  [/\b(disturbance|fight|fighting|argument|arguing|yelling|screaming|noise|loud music|loud party|barking)\b/i,'DISTURBANCE / NOISE'],
  [/\b(suspicious|prowler|loitering)\b/i,'SUSPICIOUS'],[/\b(welfare check|check the welfare|check on the welfare|missing person|runaway)\b/i,'WELFARE CHECK'],
  [/\b(trespass\w*|refusing to leave)\b/i,'TRESPASS'],[/\b(vandal\w*|graffiti|tagging)\b/i,'VANDALISM'],
- [/\b(alarm|panic button)\b/i,'ALARM'],[/\b(dogs?|cat|horse|cattle|cows?|animal|coyote|mountain lion|deer)\b/i,'ANIMAL'],
+ [/\b(alarm|panic button)\b/i,'ALARM'],[/\b(animal control|animal services|(loose|stray|aggressive|vicious|barking|injured|dead|lost) (dogs?|cats?|horses?|cattle|cows?|animal|deer)|dogs? (bite|attack|at large|loose|in the roadway)|(horses?|cattle|cows?|livestock|deer) (on|in) the (road|roadway|highway|freeway|lanes)|mountain lion|coyote)\b/i,'ANIMAL'],
 ];
 // Colors by who handles the call: blue medical, red fire, orange police (split colors when more than one); green when resolved
 const SERVICES={medical:{label:'Medical',color:'#4a90ff'},fire:{label:'Fire',color:'#ff3b3b'},police:{label:'Police',color:'#ff8c1a'}};
@@ -409,12 +410,19 @@ const barBg=cols=>cols.length===1?cols[0]:`linear-gradient(${cols.map((c,i)=>`${
 // A call with no type of its own ("10-18, 1424 Osage") takes the type of the conversation it belongs to
 function inheritKinds(entry){
   if(entry.morse||(entry.kinds&&entry.kinds.length&&!entry.inherited))return;
-  const typed=e=>e!==entry&&!e.morse&&e.kinds&&e.kinds.length;
+  const typed=e=>e!==entry&&!e.morse&&!e.inherited&&e.kinds&&e.kinds.length&&e.time<=entry.time;
   let src=null;
-  if(entry.inc)src=entry.inc.entries.find(e=>typed(e)&&!e.inherited)||entry.inc.entries.find(typed);
-  if(!src&&entry.units&&entry.units.size)src=[...lines].reverse().find(e=>typed(e)&&e.time<=entry.time&&entry.time-e.time<15*60e3&&e.units&&[...entry.units].some(u=>e.units.has(u)));
-  if(!src)src=[...lines].reverse().find(e=>typed(e)&&e.time<=entry.time&&entry.time-e.time<150e3);
-  if(src){entry.kinds=src.kinds.slice();entry.inherited=true;entry.inheritedAt=src.time}
+  if(entry.inc)src=entry.inc.entries.find(typed);
+  if(!src&&entry.units&&entry.units.size)src=[...lines].reverse().find(e=>typed(e)&&entry.time-e.time<15*60e3&&e.units&&[...entry.units].some(u=>e.units.has(u)));
+  if(!src){ // a reply right after a typed call: look back at most two transmissions, within a minute
+    const prev=lines.filter(e=>e!==entry&&!e.morse&&e.time<=entry.time).sort((a,b)=>b.time-a.time).slice(0,2);
+    src=prev.find(e=>typed(e)&&entry.time-e.time<60e3)||null}
+  if(src){entry.kinds=[src.kinds[0]];entry.inherited=true;entry.inheritedAt=src.time;entry.inheritedFrom=src}
+  else if(entry.inherited){entry.kinds=[];entry.inherited=false;entry.inheritedFrom=null}
+}
+// when a call is corrected (a later, better hearing or the AI check), calls that borrowed its type follow along
+function refreshInheritors(src){
+  for(const e of lines)if(e.inheritedFrom===src&&e!==src){const k=src.kinds&&src.kinds.length?[src.kinds[0]]:[];if(k.join()!==e.kinds.join()){e.kinds=k;if(!k.length){e.inherited=false;e.inheritedFrom=null}drawLine(e);if(e.inc&&!e.inc.gone)styleInc(e.inc)}}
 }
 // Fire/EMS dispatch is sent with alert tones first; a call right after tones is a medical call unless the words say otherwise
 function tonedKinds(kinds){
@@ -743,7 +751,7 @@ function extract(text){
       let m=matchStreetAt(tok,j);
       if(m&&!m.hasSuffix&&(PHONETIC.has(m.base)||PHONETIC.has(tok[j])))m=null; // "23 Adam" is a unit
       const codeLike=/^1[01]\d\d$/.test(tok[i])&&m&&['and','at'].includes(tok[j+m.len])&&matchStreetAt(tok,j+m.len+1);
-      if(m&&!codeLike){found.push({type:'address',num:tok[i],s:S(m),spoken:m.hasSuffix?titleCase(m.base)+' '+titleCase(SUFFIX_FULL[m.suffixWord]||m.suffixWord):titleCase(m.base),label:`${tok[i]} ${S(m).canon}`,score:3,words:[tok[i],...m.words]});take(i,j-i+m.len);i=j+m.len-1;continue}
+      if(m&&!codeLike){found.push({type:'address',num:tok[i],s:S(m),spoken:m.hasSuffix?titleCase(m.base)+' '+titleCase(SUFFIX_FULL[m.suffixWord]||m.suffixWord):titleCase(m.base),label:`${tok[i]} ${S(m).canon}`,score:3,words:[tok[i],...m.words],said:m.hasSuffix});take(i,j-i+m.len);i=j+m.len-1;continue}
     }
     const h=hwyAt(i);let m=h?null:matchStreetAt(tok,i);if(m&&!m.hasSuffix&&PHONETIC.has(m.base))m=null;
     if(m&&DIRS[tok[i-1]]&&tok[i-1].length>1)m.dir=tok[i-1]; // "East Grand"
@@ -755,11 +763,11 @@ function extract(text){
     if(['and','at','near','by','off'].includes(tok[k])&&k+1<tok.length){
       const h2=hwyAt(k+1),m2=h2?null:matchStreetAt(tok,k+1),second=h2||m2;
       if(second&&second.base!==first.base&&!(second.common&&!second.hasSuffix&&!second.hwy&&second.fuzzy)){
-        found.push({type:'cross',a:S(first),b:S(second),label:`${S(first).canon} & ${S(second).canon}`,score:2.5,words:[...first.words,...second.words]});take(i,k+1-i+second.len);i=k+second.len;continue}
+        found.push({type:'cross',a:S(first),b:S(second),label:`${S(first).canon} & ${S(second).canon}`,score:2.5,words:[...first.words,...second.words],said:!!(first.hasSuffix||second.hasSuffix||first.hwy||second.hwy)});take(i,k+1-i+second.len);i=k+second.len;continue}
     }
     const placeCue=['on','at','near','off','from','toward','towards','to','of'].includes(tok[i-1])||!!(m&&m.dir);
     const major=m&&(SD.baseRank.get(m.base)??9)<=2;
-    if(first.hwy||(m&&(m.hasSuffix||(placeCue&&(!m.common||m.dir)&&!m.fuzzy&&major)))){found.push({type:'street',s:S(first),label:S(first).canon,score:first.hwy?0.8:1,words:first.words,exact:!first.hwy&&!m.fuzzy});take(i,first.len);i=i+first.len-1}
+    if(first.hwy||(m&&(m.hasSuffix||(placeCue&&(!m.common||m.dir)&&!m.fuzzy&&major)))){found.push({type:'street',s:S(first),label:S(first).canon,score:first.hwy?0.8:1,words:first.words,exact:!first.hwy&&!m.fuzzy,said:!!(m&&m.hasSuffix&&!m.fuzzy)});take(i,first.len);i=i+first.len-1}
   }
   if(!found.some(f=>f.type==='address'||f.type==='cross')){
     const h=found.find(f=>f.type==='street'&&f.s.hwy),st=found.find(f=>f.type==='street'&&!f.s.hwy);
@@ -1035,9 +1043,9 @@ async function resolveAI(loc){
   if(!g&&loc.place){
     try{const r=await nominatim('search',searchParams({limit:'1',q:`${loc.place}${st?', '+st:''}, ${town?townName(town):'San Luis Obispo County'}, California`}));if(r.length){g={lat:+r[0].lat,lon:+r[0].lon,precise:true};label=`${titleCase(loc.place)}${st?', '+st:''}`}}catch{}
   }
-  let only=null;if(!g&&st){g=streetLocal(S(st),town);label=st+(loc.place?` (${loc.place})`:'');if(!loc.place&&!loc.number&&!loc.cross)only=S(st)}
+  let only=null,weak=false;if(!g&&st){g=streetLocal(S(st),town);label=st+(loc.place?` (${loc.place})`:'');if(!loc.place&&!loc.number&&!loc.cross)only=S(st);if(cr)weak=true} // two streets that never meet: a guess
   if(!g||!inRegion(g.lat,g.lon))return null;
-  return{g:{...g,label},loc:{label,type:'ai',words:[],s:only||undefined,exact:!!only}};
+  return{g:{...g,label},loc:{label,type:'ai',words:[],s:only||undefined,exact:!!only,weak}};
 }
 // same as resolveAI, plus which words of the call to highlight
 async function resolveAIWords(loc,text){
@@ -1230,7 +1238,7 @@ function refreshNearby(how){
   const w=$('where');w.classList.toggle('warn',!inCounty);
   w.textContent=!inCounty?'This spot is outside San Luis Obispo County, so calls on this feed won\'t be near it.':`${place||'Zone set'}${meAcc?` · ±${Math.round(meAcc)} m`:''}${how?` · ${how}`:''}`;
 }
-function recheckZone(){for(const inc of incidents){inc.inZone=incDist(inc)<=radiusM();styleInc(inc)}updateEdge()}
+function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.alert=!!(e.zone||(e.hits&&e.hits.length));drawLine(e)}}updateEdge()}
 function geoError(err){
   const ios=/iPhone|iPad/.test(navigator.userAgent),w=$('where');w.classList.add('warn');zoneOpen(true);
   w.textContent=err&&err.code===1
@@ -1362,7 +1370,7 @@ function drawLine(entry){
   const tags=[];
   if(entry.partial)tags.push('<span class="tag pend">● still talking…</span>');
   el.style.setProperty('--tbar',barBg(resolved?[RESOLVED_COLOR]:svcColors(servicesOf(entry))));
-  for(const k of entry.kinds.slice(0,2))tags.push(`<span class="tag type" style="--tc:${typeColor(k)}" title="${esc((serviceOf(k)?SERVICES[serviceOf(k)].label+' call':'Call type')+(entry.inherited?`. No type was said in this transmission, so it's carried over from the ${fmtTime(entry.inheritedAt).slice(0,5)} call in the same conversation.`:''))}">${esc(k)}${entry.inherited?' ↺':''}</span>`);
+  for(const k of entry.kinds.slice(0,2))tags.push(`<span class="tag type${entry.inherited?' inh':''}" style="--tc:${typeColor(k)}" title="${esc((serviceOf(k)?SERVICES[serviceOf(k)].label+' call':'Call type')+(entry.inherited?`. No type was said in this transmission, so it's carried over from the ${fmtTime(entry.inheritedAt).slice(0,5)} call in the same conversation.`:''))}">${esc(k)}${entry.inherited?' ↺':''}</span>`);
   if(entry.toned)tags.push('<span class="tag tone" title="Dispatch alert tones were heard right before this call. Fire and medical calls are sent with tones.">ALERT TONES</span>');
   if(entry.results.length){const r=entry.results[0];tags.push(`<span class="tag loc">📍 ${esc(r.label)}${r.precise?'':' ≈'}</span>`)}
   if(entry.zone&&!resolved)tags.push('<span class="tag al">IN YOUR ZONE</span>');
@@ -1381,6 +1389,7 @@ function codeFix(t){return t.replace(/^(\s*)go to you\b/i,'$1Code 2').replace(/\
 async function prepare(entry,merged,info={}){
   if(info.morse){const m=info.morse;Object.assign(entry,{text:m.text,morse:{pattern:m.pattern,wpm:m.wpm||0,hz:m.hz||0},fixes:[],unc:new Set(),results:[],hits:[],kinds:['MORSE CODE'],locs:[],geo:null,aiChecked:false,
     check:'✓ MORSE DECODED',checkNote:m.hz?`Decoded from a ${m.hz} Hz tone at about ${m.wpm} words per minute. Radio repeaters send their FCC call sign this way.`:'Dots and dashes in the transcript, decoded'});return}
+  entry.inherited=false;entry.inheritedFrom=null; // a fresh hearing decides its own type first
   const snapped=snapNames(codeFix(merged.text));if(snapped.text!==merged.text)snapped.fixes=wordFixes(merged.text,snapped.text).concat(snapped.fixes.filter(f=>!wordFixes(merged.text,snapped.text).some(g=>g.to===f.to)));
   Object.assign(entry,{text:snapped.text,fixes:snapped.fixes,unc:merged.unc,primed:info.primed,plain:info.plain,results:[],hits:[],kinds:[],locs:[]});
   entry.check=info.cloud?'✓ '+info.cloud:info.typed?'TEST':info.single?'1 HEARING':merged.agree?'✓ HEARINGS AGREE':'✓ DOUBLE-CHECKED';
@@ -1410,6 +1419,7 @@ async function prepare(entry,merged,info={}){
       if(ai.location&&ai.location.number&&ai.location.street)ai.location.number=houseNumberFix(entry.text,String(ai.location.number),String(ai.location.street));
       let r=await resolveAIWords(ai.location,entry.text);
       if(r&&r.loc.s&&!placedStreet(entry.text,ai.location.street))r=null;
+      if(r&&r.loc.weak&&entry.geo){r=entry.geo;r._kept=true} // the check named two streets that don't cross; keep what was clearly said
       // "3 Lincoln 12" is a unit call sign, not Lincoln Street
       if(r&&ai.location.street&&!ai.location.cross&&PHONETIC.has(baseOf(String(ai.location.street)))&&!new RegExp('\\b'+baseOf(String(ai.location.street))+'\\s+(street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|place|boulevard|blvd)\\b','i').test(entry.text))r=null;
       // a street address the county list already placed exactly beats a far-off guess when no town was said
@@ -1417,7 +1427,7 @@ async function prepare(entry,merged,info={}){
       Object.assign(entry,{kinds:kindsOf(entry.text,r?r.loc.words:locWordsOf(entry)),hits:watchMatches(entry.text)});
       if(r&&ai.location.street){const t2=alignStreetWords(entry.text,String(ai.location.street).replace(/\s*\([^)]*\)\s*$/,''));if(t2!==entry.text){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t2));entry.text=t2;r.loc.words=locWordsFor(t2,[ai.location.number,ai.location.street,ai.location.cross,ai.location.place,r.g.label])}}
       if(r){entry.geo=r;if(ai.confidence==='low'&&!r._kept){r.g.precise=false;r.loc.exact=false}entry.locs=[r.loc];const tn=ai.location.town&&String(ai.location.town).toLowerCase();if(TOWNS[tn]){lastTown=tn;lastTownAt=Date.now()}}
-      else if(ai.location===null){entry.geo=null;entry.locs=[]} // the check says there's no place in this call
+      else if(ai.location===null&&!(entry.geo&&entry.geo.loc.said)){entry.geo=null;entry.locs=[]} // the check says there's no place in this call (a clearly named street like "San Luis Drive" stays)
       {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||l.hosp&&/^(US|CA) \d+/.test(entry.geo.g.label||''))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
     }
   }  // 3) still nothing: a numbered address on a misheard out-of-county road ("9000 Fairlane Highway" → 9000 Airline Highway)
@@ -1530,6 +1540,7 @@ function reveal(entry){
   if(entry.inc&&!entry.inc.entries.includes(entry)){entry.inc.entries.push(entry);entry.inc.lastAt=Date.now();for(const u of entry.units)entry.inc.units.add(u)}
   inheritKinds(entry);
   if(entry.inc)styleInc(entry.inc);
+  if(!entry.inherited)refreshInheritors(entry);
   // move the pin only when this call created it (its full version arrived) or it pins the place more precisely
   if(entry.geo&&entry.inc&&!newPin&&(entry.inc.entries[0]===entry||(entry.geo.g.precise&&!entry.inc.precise))){const{loc,g}=entry.geo;
     Object.assign(entry.inc,{lat:g.lat,lon:g.lon,precise:g.precise,label:g.label||loc.label});entry.inc.marker.setLatLng([g.lat,g.lon]);setIncLine(entry.inc,lineFor(loc,g));entry.inc.inZone=incDist(entry.inc)<=radiusM();styleInc(entry.inc)}
@@ -1560,7 +1571,7 @@ $('testForm').onsubmit=e=>{e.preventDefault();const v=$('testInput').value.trim(
 $('clearBtn').onclick=()=>{focusedInc=null;lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
 $('exportBtn').onclick=()=>{const txt=lines.map(l=>`[${l.time.toLocaleString()}] ${l.text}${l.results.length?'  {'+l.results.map(r=>r.label).join('; ')+'}':''}`).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download=`slo-dispatch-${new Date().toISOString().slice(0,16).replace(':','')}.txt`;a.click()};
 // Phone sheet
-$('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:${pieBg([SERVICES.medical.color,SERVICES.police.color])}"></i>Split = more than one</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--cyan)"></i>In your zone</span>`;
+$('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--cyan)"></i>In your zone</span>`;
 function setSheet(open){$('feed').classList.toggle('open',open);document.body.classList.toggle('sheet-open',open)}
 $('feedHead').onclick=e=>{if(e.target.closest('button'))return;if(innerWidth<=760)setSheet(!$('feed').classList.contains('open'))};
 document.querySelector('#feed .grab').onclick=()=>setSheet(!$('feed').classList.contains('open'));
@@ -1986,7 +1997,7 @@ audio.addEventListener('waiting',()=>listening&&state('BUFFERING'));
 function paintEngine(){
   const e=engine(),dev=e==='device';$('engine').value=e;
   $('keyBox').style.display=dev?'none':'';
-  if(!dev){const P=PROVIDERS[e],own=ownKey(e),shared=e==='groq'&&!own&&sharedOK();$('sttKey').placeholder=shared?'Using the shared key. Paste your own (optional)':P.ph;$('sttKey').value=own?'••••••••••••':'';
+  if(!dev){const P=PROVIDERS[e],own=ownKey(e),shared=e==='groq'&&!own&&sharedOK();$('sttKey').placeholder='Add your own Groq key here';$('sttKey').value='';
     $('useShared').style.display=e==='groq'&&own?'':'none';
     $('engineNote').innerHTML=shared?`Using the site's shared Groq key, so it works with no setup. It's shared by everyone using the site; if it runs into its daily limit, add your own free key from <a href="${P.keyUrl}" target="_blank" rel="noopener" style="color:var(--cyan)">${P.keyUrl.replace('https://','')}</a>.`:own?'Your own key is saved in this browser. Calls are transcribed in about a second.':`Get a key at <a href="${P.keyUrl}" target="_blank" rel="noopener" style="color:var(--cyan)">${P.keyUrl.replace('https://','')}</a>, then paste it here. It's saved only in this browser.`}
   else paintModels();
@@ -2011,7 +2022,7 @@ $('engine').onchange=()=>{const v=$('engine').value;store.set('engine',v);cloudB
   else{if(worker){worker.terminate();worker=null;modelReady=false}if(sttKey(v))aiStatus('READY · '+PROVIDERS[v].name.split(' ·')[0]);else aiStatus('NEEDS KEY')}
   paintEngine();pump()};
 $('useShared').onclick=()=>{store.del('sttKey_groq');cloudBlocked=false;paintEngine();aiStatus('READY · GROQ')};
-$('sttKeySave').onclick=async()=>{const v=$('sttKey').value;if(!v||v.startsWith('••'))return;if(await saveKey(engine(),v,$('engineNote'))){$('sttKey').value='••••••••••••';$('engineNote').textContent='Key works. Transcribing.'}};
+$('sttKeySave').onclick=async()=>{const v=$('sttKey').value.trim();if(!v)return;if(await saveKey(engine(),v,$('engineNote'))){$('sttKey').value='';paintEngine();$('engineNote').textContent='Your key works and is saved in this browser. Transcribing with it now.'}};
 $('setupSave').onclick=async()=>{if(await saveKey('groq',$('setupKey').value,$('setupNote'))){$('setupNote').textContent='Connected. New calls will be transcribed as they come in.';setTimeout(()=>$('setupDlg').close(),900)}};
 $('setupKey').addEventListener('keydown',e=>{if(e.key==='Enter')$('setupSave').click()});
 $('setupDevice').onclick=()=>{store.set('engine','device');$('setupDlg').close();gpuCheck.then(()=>{paintModels();if(listening&&!worker)startWorker()})};
