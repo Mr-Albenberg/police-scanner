@@ -2281,7 +2281,8 @@ function paintUsage(){
     const kl=keyLim[model]&&Date.now()-keyLim[model].at<864e5?keyLim[model]:null,pct=Math.min(100,Math.round(mine/L.n*100));
     rows.push(`<div class="urow"><div class="ul"><span>${L.label}</span><b>${mine.toLocaleString()} / ${L.n.toLocaleString()} ${L.u} · ${pct}%</b></div><div class="ubar"><i style="width:${Math.max(pct,mine?2:0)}%"></i>${kl?`<i class="k" style="width:${Math.min(100,Math.round(kl.used/kl.limit*100))}%"></i>`:''}</div>${kl?`<div class="uk">Whole key: ${kl.used.toLocaleString()} / ${kl.limit.toLocaleString()} ${kl.what} (${Math.round(kl.used/kl.limit*100)}%) as of ${fmtTime(new Date(kl.at)).slice(0,5)}</div>`:''}</div>`);
   }
-  const c=used('claude');
+  const c=used('claude'),allChecks=used('ai');
+  rows.push(`<div class="uk" style="color:var(--muted)">AI checks from this browser today, all models: <b style="color:var(--text)">${allChecks.toLocaleString()}</b> (the per-model bars above only count checks since Oct 5, 12:05 AM)</div>`);
   $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}${c?`<div class="uk" style="margin-top:6px">Claude checks today: ${c.toLocaleString()}</div>`:''}<div class="mnote">Bars show this browser's use over the last 24 hours. ${own?'You\'re using your own key.':'The shared key is used by everyone on the site, so the whole key can run out sooner; when Groq reports the whole key\'s total, it appears under the bar.'}</div>`;
 }
 function openSettings(){paintEngine();paintUsage();$('settingsDlg').showModal()}
