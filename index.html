@@ -11,7 +11,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Dispatch Watch">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://server.arcgisonline.com">
   <link rel="preconnect" href="https://hls-o2.broadcastify.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -36,6 +38,7 @@
     #map{position:fixed;inset:0;background:#0c1418;z-index:0}
     header{position:fixed;z-index:1000;top:var(--top);left:var(--gap);right:var(--gap);display:flex;align-items:center;gap:16px;padding:9px 12px 9px 16px}
     .brand{display:flex;align-items:center;gap:11px;min-width:0}
+    .logo{width:34px;height:34px;flex:0 0 auto;border-radius:9px;display:block}
     .beacon{width:11px;height:11px;flex:0 0 auto;border-radius:50%;background:#6d8290}
     .beacon.live{background:var(--green);box-shadow:0 0 16px #53ebb0cc}
     .eyebrow{color:var(--cyan);font-size:10px;font-weight:850;letter-spacing:.18em}
@@ -175,6 +178,12 @@
     #legend{display:flex;flex-wrap:wrap;gap:5px 12px;padding:8px 14px 10px;border-top:1px solid var(--line2);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.03em}
     #legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
     #feed.collapsed #legend{display:none}
+    .tag.plate{background:#f2f4f0;border-color:#c9d2cc;color:#1b2a6b;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}
+    .tag.plate b{color:#1b2a6b;font-weight:900;letter-spacing:.12em;margin-right:4px}
+    .pw{background:#f2f4f022;box-shadow:inset 0 -2px #f2f4f0aa;border-radius:2px;padding:0 1px}
+    .tag.veh{background:#14222c;border-color:#4d6676;color:#d5e3ea;font-weight:700}
+    .tag.cmp{background:#2a1f08;border-color:#a8822e;color:#ffe2a6;font-weight:700;letter-spacing:.02em}
+    .tag.cmp b{color:#f5c15a;font-weight:850;margin-right:4px;letter-spacing:.06em}
     .tag.type.inh{border-style:dashed;opacity:.85}
     .tag.tone{background:#1a1d3d;border-color:#5b8cff;color:#c9d6ff}
     .tag.code{background:#0f3346;border-color:#2c6f8c;color:#cdf3ff;font-size:9.5px;font-weight:650;letter-spacing:.01em;padding:3px 7px;cursor:help}
@@ -212,7 +221,7 @@
     @media(max-width:760px){
       :root{--gap:8px;--top:max(8px,env(safe-area-inset-top))}
       header{flex-wrap:wrap;gap:8px;padding:9px 10px}
-      .brand h1{font-size:15px}.eyebrow{font-size:9px}
+      .brand h1{font-size:15px}.eyebrow{font-size:9px}.logo{width:28px;height:28px;border-radius:7px}
       .stat{font-size:9px;padding-left:10px}
       .controls{width:100%}#start{flex:1;min-width:0}
       #side{top:calc(var(--top) + 112px);left:var(--gap);right:var(--gap);width:auto}
@@ -242,6 +251,7 @@
 
   <header class="glass">
     <div class="brand">
+      <img class="logo" src="favicon.svg" alt="" width="34" height="34">
       <span id="beacon" class="beacon"></span>
       <div><div class="eyebrow">SLO // LIVE OPERATIONS</div><h1>DISPATCH WATCH</h1></div>
     </div>
@@ -377,6 +387,7 @@ const TOWNS={
 const TOWN_FULL={'slo':'San Luis Obispo','san luis':'San Luis Obispo','cal poly':'San Luis Obispo','paso':'Paso Robles','pismo':'Pismo Beach','grover':'Grover Beach','avila':'Avila Beach','baywood':'Los Osos','los ranchos':'San Luis Obispo','edna':'San Luis Obispo'};
 const titleCase=s=>s.replace(/\b\w/g,c=>c.toUpperCase());
 const townName=t=>TOWN_FULL[t]||titleCase(t);
+const EW_HWYS=new Set(['CA 58','CA 46','CA 41','CA 166','CA 227']);
 const HIGHWAYS={'101':'US 101','1':'CA 1','46':'CA 46','41':'CA 41','58':'CA 58','227':'CA 227','166':'CA 166','135':'CA 135'};
 const KINDS=[ // words that name the type of call (codes are read separately, with address checks)
  [/\b(structure fire|house fire|vehicle fire|car fire|vegetation fire|grass fire|brush fire|dumpster fire|working fire|smoke (check|investigation|showing|in the area)|flames|fire alarm|gas leak|odor of gas|smell of gas|wires? down|transformer|controlled burn|illegal burn)\b/i,'FIRE'],
@@ -767,7 +778,11 @@ function matchStreetAt(tok,i){
 function findTown(tok){const s=' '+tok.join(' ')+' ';for(const t of Object.keys(TOWNS).sort((a,b)=>b.length-a.length))if(s.includes(' '+t+' '))return t;return null}
 function extract(text){
   const tok=tokenize(text),found=[],used=new Set(),take=(i,len)=>{for(let k=i;k<i+len;k++)used.add(k)};
-  const hwyAt=i=>{if(['highway','hwy','route','freeway','sr','interstate'].includes(tok[i])&&HIGHWAYS[tok[i+1]])return{hwy:true,ref:HIGHWAYS[tok[i+1]],base:HIGHWAYS[tok[i+1]],canon:HIGHWAYS[tok[i+1]],len:2,words:tok.slice(i,i+2)};if(tok[i]==='101')return{hwy:true,ref:'US 101',base:'US 101',canon:'US 101',len:1,words:['101']};return null};
+  const HW=n=>({hwy:true,ref:HIGHWAYS[n],base:HIGHWAYS[n],canon:HIGHWAYS[n]}),BOUND=/^(north|south|east|west)bound$/;
+  const hwyAt=i=>{
+    if(tok[i]==='the'&&HIGHWAYS[tok[i+1]]&&tok[i+1]!=='1'&&['from','on','at','to','off','near','onto','via','take','taking','of','past','and','by','approaching'].includes(tok[i-1]))return{...HW(tok[i+1]),len:2,words:[tok[i+1]]}; // "southbound from the 58"
+    if(HIGHWAYS[tok[i]]&&tok[i]!=='1'&&tok[i]!=='101'&&(BOUND.test(tok[i+1]||'')||BOUND.test(tok[i-1]||'')))return{...HW(tok[i]),len:1,words:[tok[i]]}; // "58 eastbound"
+    if(['highway','hwy','route','freeway','sr','interstate'].includes(tok[i])&&HIGHWAYS[tok[i+1]])return{hwy:true,ref:HIGHWAYS[tok[i+1]],base:HIGHWAYS[tok[i+1]],canon:HIGHWAYS[tok[i+1]],len:2,words:tok.slice(i,i+2)};if(tok[i]==='101')return{hwy:true,ref:'US 101',base:'US 101',canon:'US 101',len:1,words:['101']};return null};
   const S=m=>({base:m.base,canon:m.dir?titleCase(m.dir)+' '+m.canon.replace(/^(North|South|East|West) /,''):m.canon,hwy:!!m.hwy,ref:m.ref,dir:m.dir,names:m.names||undefined});
   // town names ("Arroyo Grande", "Morro Bay") are towns, not streets, unless a street suffix follows
   let town=null;
@@ -801,6 +816,9 @@ function extract(text){
   if(!found.some(f=>f.type==='address'||f.type==='cross')){
     const h=found.find(f=>f.type==='street'&&f.s.hwy),st=found.find(f=>f.type==='street'&&!f.s.hwy);
     if(h&&st)found.push({type:'cross',a:h.s,b:st.s,label:`${h.s.canon} & ${st.s.canon}`,score:2.6,words:[...h.words,...st.words]});
+    // "southbound from the 58": heading north or south from an east-west highway means US 101 where it meets that highway
+    else if(h&&!st&&EW_HWYS.has(h.s.ref)&&/\b(north|south)bound\b/.test(tok.join(' '))&&!found.some(f=>f.s&&f.s.ref==='US 101')){
+      const u={hwy:true,ref:'US 101',base:'US 101',canon:'US 101'};found.push({type:'cross',a:u,b:h.s,label:`US 101 & ${h.s.canon}`,score:2.4,words:h.words,inferred:true})}
   }
   found.sort((a,b)=>b.score-a.score);
   return{locs:found,town};
@@ -933,6 +951,7 @@ async function geocode(loc,town){
       if(!res&&SD.ready)res=streetLocal(loc.s,town);
     }else if(SD.ready&&loc.type==='cross'){
       res=crossLocal(loc.a,loc.b,town)||(town&&loc._carried?crossLocal(loc.a,loc.b,null):null);
+      if(res&&loc.inferred)res={...res,precise:false}; // worked out from "southbound from the 58", not said outright
       if(!res){const sb=streetLocal(loc.b,town),sa=sb?null:streetLocal(loc.a,town);res=sb?{...sb,label:loc.b.canon}:sa?{...sa,label:loc.a.canon}:null}
     }
     else if(SD.ready&&loc.type==='street')res=streetLocal(loc.s,town);
@@ -950,8 +969,13 @@ const AI_MODELS=['openai/gpt-oss-120b','qwen/qwen3.8-27b','openai/gpt-oss-20b'];
 const aiLimitedUntil={};
 const AI_SYS=`You check speech-to-text transcripts of San Luis Obispo County, California sheriff, police and fire radio. Return JSON only.
 Input: the new transcript, words the recognizer was unsure of, recent calls on the same channel (newest last), and real SLO County street names that sound like words in the transcript (with their town).
-Output: {"text": string, "location": null | {"number": string|null, "street": string|null, "cross": string|null, "town": string|null, "place": string|null}, "confidence": "high"|"medium"|"low", "same_incident": string|null, "resolves": string|null}
+Output: {"text": string, "location": null | {"number": string|null, "street": string|null, "cross": string|null, "town": string|null, "place": string|null}, "confidence": "high"|"medium"|"low", "same_incident": string|null, "resolves": string|null, "plate": string|null, "vehicle": string|null, "complaint": string|null}
 Rules:
+- Highways are often said as "the 58" or "the 101". A direction plus an east-west highway with no other road ("southbound from the 58") means US 101 where it meets that highway: street "US 101", cross "CA 58".
+- Code numbers can be misheard by one digit; fix them when the call makes the meaning clear ("22152" for a swerving driver is 23152, DUI).
+- "plate": a license plate read in the call, as letters and digits with phonetic words turned into letters ("8 Adam, 48803" = "8A48803"; "Adam", "Boy", "Charles"... are A, B, C...). null if none, or if the numbers are a unit call sign.
+- "vehicle": the vehicle description if one is given ("dark blue pickup", "white Honda Civic"), else null.
+- "complaint": 2 to 5 words naming what was reported: the violation, behavior or medical problem ("swerving, flashing lights", "fainted, now conscious", "loud party", "shoplifter detained"). null for routine radio traffic with nothing reported.
 - "second_hearing", when given, is another speech recognizer's hearing of the same audio. Where they differ, use whichever words make sense for SLO County dispatch radio (real street, town and place names, unit IDs, codes). You may take words from either hearing; don't add words neither one heard.
 - "text": the transcript with only clear mishearings fixed (street/town names, unit IDs, codes). Keep every word and the punctuation, including the unit or town at the start; never remove, add or invent content.
 - Unit call signs are not addresses: a number with a phonetic word like "23 Adam", "Adam 6-2", "3 Lincoln 12", "Paul 7", "Mary 40", "Sam 2" names a patrol unit.
@@ -990,7 +1014,7 @@ function candidateStreets(text){
     for(const b of streetBases){if(Math.abs(b.length-c.length)>max+1)continue;const d=lev(cz,b.replace(/ /g,''),max);if(d<=max){const prev=found.get(b);if(prev==null||d<prev)found.set(b,d)}}
   }
   const out=[];for(const[b,d]of[...found.entries()].sort((a,b)=>a[1]-b[1]))for(const nm of(SD.baseNames.get(b)||[]))out.push(nm);
-  const roads=[];const tk=' '+tok.join(' ')+' ';for(const[n,ref]of Object.entries(HIGHWAYS))if(new RegExp(`(highway|hwy|route|sr|us) ${n} | ${n} (north|south|east|west)bound| 101 `).test(tk)&&(n!=='1'||/highway 1 |hwy 1 /.test(tk)))roads.push(`${ref} (highway)`);
+  const roads=[];const tk=' '+tok.join(' ')+' ';for(const[n,ref]of Object.entries(HIGHWAYS))if(new RegExp(`(highway|hwy|route|sr|us|the) ${n} | ${n} (north|south|east|west)bound|(north|south|east|west)bound ${n} | 101 `).test(tk)&&(n!=='1'||/highway 1 |hwy 1 /.test(tk)))roads.push(`${ref} (highway)`);
   const lm=landmarkIn(text);if(lm)roads.push(`${lm.name} (known place)`);
   // a numbered address on a road that isn't in the county: offer nearby counties' named roads
   if(/\b\d{2,6}\s+\w+(\s+\w+)?\s+(highway|road|rd|avenue|ave|street|st|lane|drive|way|boulevard)\b/i.test(text)&&!out.length)roads.push(...REGIONAL_ROADS);
@@ -1425,10 +1449,13 @@ const codeLabel=c=>/^code /i.test(c.key)?'Code '+c.key.slice(5):/^[a-z]+$/.test(
 function renderText(entry){
   if(entry.morse)return `<span class="morse">${esc(entry.text)}</span><span class="mpat" title="Morse code as heard">${esc(entry.morse.pattern)}</span>`;
   const fixed=new Map(entry.fixes.map(f=>[f.to.toLowerCase(),f.from]));
-  const locWords=new Set(entry.locs.flatMap(l=>l.words).filter(w=>!/^\d{1,2}$/.test(w)));
+  const locWords=new Set(entry.locs.flatMap(l=>l.words).filter(w=>!/^\d{1,2}$/.test(w)||HIGHWAYS[w]));
   const watchW=new Set(entry.hits.flatMap(h=>h.base.split(' ')));
+  const pd=entry.plate?callDetails(entry.text):null,pspan=pd&&pd.plate===entry.plate?pd.span:null;let off=0;
   let html=entry.text.split(/(\s+)/).map(p=>{
+    const at=off;off+=p.length;
     if(!p.trim())return p;const c=coreOf(p);let h=esc(p);
+    if(pspan&&at>=pspan[0]&&at<pspan[1])return `<span class="pw" title="License plate ${esc(entry.plate)}">${h}</span>`;
     if(watchW.has(c))h=`<mark class="w">${h}</mark>`;else if(locWords.has(c))h=`<mark>${h}</mark>`;
     if(entry.unc&&entry.unc.has(c))h=`<span class="unc" title="Unclear: the two hearings disagreed here">${h}</span>`;
     return h;
@@ -1454,6 +1481,9 @@ function drawLine(entry){
   for(const k of entry.kinds.slice(0,2))tags.push(`<span class="tag type${entry.inherited?' inh':''}" style="--tc:${typeColor(k)}" title="${esc((serviceOf(k)?SERVICES[serviceOf(k)].label+' call':'Call type')+(entry.inherited?`. No type was said in this transmission, so it's carried over from the ${fmtTime(entry.inheritedAt).slice(0,5)} call in the same conversation.`:''))}">${esc(k)}${entry.inherited?' ↺':''}</span>`);
   if(entry.toned)tags.push('<span class="tag tone" title="Dispatch alert tones were heard right before this call. Fire and medical calls are sent with tones.">ALERT TONES</span>');
   if(entry.results.length){const r=entry.results[0];tags.push(`<span class="tag loc">📍 ${esc(r.label)}${r.precise?'':' ≈'}</span>`)}
+  if(entry.plate)tags.push(`<span class="tag plate" title="License plate read on the radio${entry.vehicle?': '+esc(entry.vehicle):''}"><b>${esc(entry.plate)}</b>${entry.vehicle?' '+esc(entry.vehicle):''}</span>`);
+  else if(entry.vehicle&&!entry.morse)tags.push(`<span class="tag veh">${esc(entry.vehicle)}</span>`);
+  if(entry.complaint&&!entry.morse){const pol=servicesOf(entry).includes('police')&&!servicesOf(entry).includes('medical');tags.push(`<span class="tag cmp" title="What was reported"><b>${pol?'VIOLATION':'REPORTED'}</b> ${esc(entry.complaint)}</span>`)}
   if(entry.zone&&!resolved)tags.push('<span class="tag al">IN YOUR ZONE</span>');
   else if(entry.hits.length&&!resolved)tags.push(`<span class="tag al" title="${esc(entry.hits.map(h=>h.name).join(', '))}">WATCHED STREET</span>`);
   if(resolved)tags.push('<span class="tag ok">✓ RESOLVED</span>');
@@ -1466,12 +1496,38 @@ function drawLine(entry){
 }
 // Text work, Claude review and mapping happen before the call is shown.
 // common mishearings of response codes ("go to you" at the start of a call is "Code 2")
+// License plates read on the radio ("8 Adam, 48803" = 8A48803), vehicle descriptions and what was reported
+const PLATE_LETTERS={adam:'A',boy:'B',charles:'C',charlie:'C',david:'D',edward:'E',frank:'F',george:'G',henry:'H',ida:'I',john:'J',king:'K',lincoln:'L',mary:'M',nora:'N',ocean:'O',paul:'P',queen:'Q',robert:'R',sam:'S',tom:'T',union:'U',victor:'V',william:'W',xray:'X',young:'Y',zebra:'Z',alpha:'A',bravo:'B',delta:'D',echo:'E',foxtrot:'F',golf:'G',hotel:'H',india:'I',juliet:'J',kilo:'K',lima:'L',mike:'M',november:'N',oscar:'O',papa:'P',quebec:'Q',romeo:'R',sierra:'S',tango:'T',uniform:'U',whiskey:'W',yankee:'Y',zulu:'Z'};
+const PLATE_CA=[/^\d[A-Z]{3}\d{3}$/,/^\d[A-Z]\d{5}$/]; // passenger 8ABC123, commercial 8A12345
+const PLATE_OTHER=[/^\d[A-Z]{2}\d{4}$/,/^\d{2}[A-Z]\d{4}$/,/^\d[A-Z]\d{4}$/,/^[A-Z]{3}\d{3,4}$/,/^\d{3}[A-Z]{3}$/,/^[A-Z]{2}\d{5}$/];
+const normPlate=p=>{const v=String(p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return v.length>=5&&v.length<=8&&/\d/.test(v)&&/[A-Z]/.test(v)?v:null};
+function callDetails(text){
+  const out={plate:null,span:null,vehicle:null,complaint:null};
+  // plate: a run of digits and phonetic letters that forms a real plate pattern
+  const toks=[...text.matchAll(/[A-Za-z]+(?:-ray)?|\d+(?:-\d+)*/g)].map(m=>({w:m[0],i:m.index,e:m.index+m[0].length}));
+  const val=t=>{const w=t.w.toLowerCase().replace('-','');if(/^\d/.test(t.w))return t.w.replace(/-/g,'');if(PLATE_LETTERS[w])return PLATE_LETTERS[w];if(/^[A-Z]$/.test(t.w))return t.w;return null};
+  const ctx=/\b(plates?|license|registration|tag|partial|vehicle|car|truck|pickup|sedan|suv|van|motorcycle|semi|trailer)\b/i.test(text);
+  for(let i=0;i<toks.length&&!out.plate;i++){
+    let acc='';for(let j=i;j<Math.min(toks.length,i+9);j++){
+      const v=val(toks[j]);if(v==null)break;if(j>i&&/[^\s,.-]/.test(text.slice(toks[j-1].e,toks[j].i).replace(/[,.]/g,'').trim()))break;
+      acc+=v;if(acc.length>8)break;
+      const nxt=toks[j+1]&&val(toks[j+1])!=null&&/^[\s,.-]*$/.test(text.slice(toks[j].e,toks[j+1].i));
+      if(!nxt&&(PLATE_CA.some(r=>r.test(acc))||(ctx&&PLATE_OTHER.some(r=>r.test(acc))))&&/[A-Z]/.test(acc)&&!/^1[01]-/.test(toks[i].w)){out.plate=acc;out.span=[toks[i].i,toks[j].e];break}
+    }
+  }
+  const v=text.match(/\b((?:dark|light|bright)?\s?(?:white|black|silver|gr[ae]y|red|blue|green|tan|gold|maroon|brown|beige|orange|yellow|purple)\s+(?:and\s+\w+\s+)?(?:[A-Z][a-z]+\s+)?(?:pickup|truck|sedan|suv|van|minivan|car|coupe|motorcycle|semi|jeep|hatchback|convertible|wagon|bus|rv|trailer|toyota|honda|ford|chevy|chevrolet|dodge|nissan|tesla|bmw|mercedes|subaru|kia|hyundai|jeep|ram|gmc|lexus|audi|volkswagen|mazda|prius|camry|civic|accord|tacoma|f-?150|silverado))\b/i);
+  if(v)out.vehicle=v[1].trim();
+  const c=text.match(/\b(?:complaint (?:was|is)|rp (?:states|advises|reports|said)|caller (?:states|advises|reports|said)|reporting party (?:states|advises|reports|said)|report of|reports of)\s+(?:that\s+)?(?:the\s+)?([^.;]{3,70})/i);
+  if(c)out.complaint=c[1].split(/\s+(?:and the|and he|and she|and they|but|who|which|while|so)\s+|,\s*/i)[0].split(/\s+/).slice(0,6).join(' ').replace(/[,\s]+$/,'');
+  return out;
+}
 function codeFix(t){return t.replace(/^(\s*)go to you\b/i,'$1Code 2').replace(/\bcode[- ](two|too|to)\b/gi,'Code 2').replace(/\bcode[- ](three|tree)\b/gi,'Code 3').replace(/\bcode[- ](four|for)\b(?!\s+(the|a|an|him|her|them|us|me)\b)/gi,'Code 4').replace(/\bcode[- ]one\b/gi,'Code 1')}
 async function prepare(entry,merged,info={}){
   if(info.morse){const m=info.morse;Object.assign(entry,{text:m.text,morse:{pattern:m.pattern,wpm:m.wpm||0,hz:m.hz||0},fixes:[],unc:new Set(),results:[],hits:[],kinds:['MORSE CODE'],locs:[],geo:null,aiChecked:false,
     check:'✓ MORSE DECODED',checkNote:m.hz?`Decoded from a ${m.hz} Hz tone at about ${m.wpm} words per minute. Radio repeaters send their FCC call sign this way.`:'Dots and dashes in the transcript, decoded'});return}
   entry.inherited=false;entry.inheritedFrom=null; // a fresh hearing decides its own type first
   entry.alt=info.alt||null;
+  {const d=callDetails(merged.text);entry.plate=d.plate;entry.plateSpan=d.span;entry.vehicle=d.vehicle;entry.complaint=d.complaint}
   const snapped=snapNames(codeFix(merged.text));if(snapped.text!==merged.text)snapped.fixes=wordFixes(merged.text,snapped.text).concat(snapped.fixes.filter(f=>!wordFixes(merged.text,snapped.text).some(g=>g.to===f.to)));
   Object.assign(entry,{text:snapped.text,fixes:snapped.fixes,unc:merged.unc,primed:info.primed,plain:info.plain,results:[],hits:[],kinds:[],locs:[]});
   entry.check=info.cloud?'✓ '+info.cloud:info.typed?'TEST':info.single?'1 HEARING':merged.agree?'✓ HEARINGS AGREE':'✓ DOUBLE-CHECKED';
@@ -1489,7 +1545,7 @@ async function prepare(entry,merged,info={}){
   for(const loc of locs.slice(0,2)){const g=await geocode(town?loc:{...loc,_carried:true},ctxTown);if(g&&(inCountyPt(g.lat,g.lon)||(loc.type==='address'&&inRegion(g.lat,g.lon)))){entry.geo={loc,g};break}}
   {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||venueBeats(l,entry.geo))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
   // 2) AI check unless the local result is already solid (saves your free AI allowance)
-  const solid=!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
+  const solid=!entry.complaint&&!entry.plate&&!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
   if(!solid&&!info.partial&&!info.typed&&aiOn()&&SD.ready&&needsCheck(entry.text,entry.unc)){
     const ai=await aiCheck(entry);
     if(ai){
@@ -1497,6 +1553,7 @@ async function prepare(entry,merged,info={}){
       const sameWords=wordsOf(t).join(' ')===wordsOf(entry.text).join(' '); // punctuation-only change: keep the original
       if(t&&!sameWords&&ratio>0.6&&ratio<1.6&&t!==entry.text&&(keepsAllWords(entry.text,t)||(entry.alt&&keepsAllWords(entry.alt,t)))){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t));entry.text=t;entry.unc=new Set()}
       entry.sameAs=ai.same_incident||null;entry.resolves=ai.resolves||null;
+      {const pl=normPlate(ai.plate);if(pl)entry.plate=pl;if(ai.vehicle&&String(ai.vehicle).length<40)entry.vehicle=String(ai.vehicle);if(ai.complaint&&String(ai.complaint).length<60)entry.complaint=String(ai.complaint)}
       entry.aiChecked=true;entry.check='✓ AI CHECKED';entry.checkNote='Transcript and location checked against recent calls and the county street list'+(ai.confidence?` (${ai.confidence} confidence)`:'');
       {const said=extract(entry.text).town;if(said&&ai.location&&(ai.location.street||ai.location.place)&&String(ai.location.town||'').toLowerCase()!==townName(said).toLowerCase())ai.location.town=townName(said)}
       if(ai.location&&ai.location.number&&ai.location.street)ai.location.number=houseNumberFix(entry.text,String(ai.location.number),String(ai.location.street));
@@ -1582,7 +1639,7 @@ async function playClip(entry){
 let saveT;
 function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{const now=Date.now();
   const incs=incidents.filter(i=>!i.gone).map(i=>({id:i.id,lat:i.lat,lon:i.lon,precise:i.precise,label:i.label,time:+i.time,lastAt:i.lastAt,status:i.status,resolvedAt:i.resolvedAt,units:[...i.units],line:i.line||null,svcs:incServices(i)}));
-  const ls=lines.filter(l=>!l.partial&&now-l.time<ACTIVE_SHOW).slice(-150).map(l=>({id:l.id,time:+l.time,text:l.text,kinds:l.kinds,check:l.check,checkNote:l.checkNote,fixes:l.fixes,unc:[...(l.unc||[])],locWords:(l.locs||[]).flatMap(x=>x.words||[]),hits:(l.hits||[]).map(h=>({name:h.name,base:h.base})),inc:l.inc&&!l.inc.gone?l.inc.id:null,zone:!!l.zone,clip:!!l.clip,resolvedInc:l.resolvedInc&&!l.resolvedInc.gone?l.resolvedInc.id:null,morse:l.morse||null,toned:!!l.toned,inherited:!!l.inherited,inheritedAt:l.inheritedAt?+l.inheritedAt:0}));
+  const ls=lines.filter(l=>!l.partial&&now-l.time<ACTIVE_SHOW).slice(-150).map(l=>({id:l.id,time:+l.time,text:l.text,kinds:l.kinds,check:l.check,checkNote:l.checkNote,fixes:l.fixes,unc:[...(l.unc||[])],locWords:(l.locs||[]).flatMap(x=>x.words||[]),hits:(l.hits||[]).map(h=>({name:h.name,base:h.base})),inc:l.inc&&!l.inc.gone?l.inc.id:null,zone:!!l.zone,clip:!!l.clip,resolvedInc:l.resolvedInc&&!l.resolvedInc.gone?l.resolvedInc.id:null,morse:l.morse||null,toned:!!l.toned,inherited:!!l.inherited,inheritedAt:l.inheritedAt?+l.inheritedAt:0,plate:l.plate||null,vehicle:l.vehicle||null,complaint:l.complaint||null}));
   store.set('dw_state',{v:1,saved:now,incs,lines:ls});
 },800)}
 function restoreState(){
@@ -1590,7 +1647,7 @@ function restoreState(){
   for(const x of st.incs||[]){if((x.status==='resolved'&&now-x.resolvedAt>RESOLVED_SHOW)||(x.status!=='resolved'&&now-x.lastAt>ACTIVE_SHOW))continue;
     byId.set(x.id,addIncident({time:new Date(x.time)},{label:x.label},{lat:x.lat,lon:x.lon,precise:x.precise,label:x.label},x))}
   for(const x of st.lines.sort((a,b)=>a.time-b.time)){if(now-x.time>ACTIVE_SHOW)continue;
-    const e={id:x.id,time:new Date(x.time),text:x.text,kinds:x.kinds||[],check:x.check,checkNote:x.checkNote,fixes:x.fixes||[],unc:new Set(x.unc||[]),locs:[{words:x.locWords||[]}],hits:x.hits||[],results:[],final:true,alerted:true,resolvedChecked:true,restored:true,clip:x.clip,morse:x.morse||null,toned:!!x.toned,inherited:!!x.inherited,inheritedAt:x.inheritedAt?new Date(x.inheritedAt):null};
+    const e={id:x.id,time:new Date(x.time),text:x.text,kinds:x.kinds||[],check:x.check,checkNote:x.checkNote,fixes:x.fixes||[],unc:new Set(x.unc||[]),locs:[{words:x.locWords||[]}],hits:x.hits||[],results:[],final:true,alerted:true,resolvedChecked:true,restored:true,clip:x.clip,morse:x.morse||null,toned:!!x.toned,inherited:!!x.inherited,inheritedAt:x.inheritedAt?new Date(x.inheritedAt):null,plate:x.plate||null,vehicle:x.vehicle||null,complaint:x.complaint||null};
     const inc=x.inc&&byId.get(x.inc);if(inc){e.inc=inc;inc.entries.push(e)}
     if(x.resolvedInc&&byId.get(x.resolvedInc))e.resolvedInc=byId.get(x.resolvedInc);
     reveal(e);
