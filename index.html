@@ -336,6 +336,10 @@
           <div class="row"><input id="sttKey" type="password" placeholder="Your own Groq key (optional)" autocomplete="off"><button class="secondary fit" id="sttKeySave" type="button">SAVE</button></div>
           <button class="linkbtn" id="useShared" type="button" style="display:none;padding:0;margin-top:4px">USE THE SHARED KEY INSTEAD</button>
           <div class="mnote" id="usage"></div>
+          <div class="lbl" style="margin-top:16px">GEMINI BACKUP CHECK (OPTIONAL, FREE)</div>
+          <div class="row"><input id="geminiKey" type="password" placeholder="Add your Google Gemini API key here" autocomplete="off"><button class="secondary fit" id="geminiSave" type="button">SAVE</button></div>
+          <button class="linkbtn" id="geminiRemove" type="button" style="display:none;padding:0;margin-top:4px">REMOVE GEMINI KEY</button>
+          <div class="mnote" id="geminiNote"></div>
           <div class="lbl" style="margin-top:16px">CLAUDE DOUBLE-CHECK (OPTIONAL)</div>
           <div class="row"><input id="claudeKey" type="password" placeholder="Add your Anthropic API key here" autocomplete="off"><button class="secondary fit" id="claudeSave" type="button">SAVE</button></div>
           <button class="linkbtn" id="claudeRemove" type="button" style="display:none;padding:0;margin-top:4px">REMOVE CLAUDE KEY</button>
@@ -408,7 +412,7 @@ const KINDS=[ // words that name the type of call (codes are read separately, wi
  [/\b(disturbance|fight|fighting|argument|arguing|yelling|screaming|noise|loud music|loud party|barking)\b/i,'DISTURBANCE / NOISE'],
  [/\b(suspicious|prowler|loitering)\b/i,'SUSPICIOUS'],[/\b(welfare check|check the welfare|check on the welfare|missing person|runaway)\b/i,'WELFARE CHECK'],
  [/\b(trespass\w*|refusing to leave)\b/i,'TRESPASS'],[/\b(vandal\w*|graffiti|tagging)\b/i,'VANDALISM'],
- [/\b(alarm|panic button)\b/i,'ALARM'],[/\b(animal control|animal services|(loose|stray|aggressive|vicious|barking|injured|dead|lost) (dogs?|cats?|horses?|cattle|cows?|animal|deer)|dogs? (bite|attack|at large|loose|in the roadway)|(horses?|cattle|cows?|livestock|deer) (on|in) the (road|roadway|highway|freeway|lanes)|mountain lion|coyote)\b/i,'ANIMAL'],
+ [/\b(alarm|panic button)\b/i,'ALARM'],[/\b(DOB|returns? (clear|valid|suspended)|clear,? suspended|valid license|license (is )?(suspended|valid|expired)|probation|parole|warrants?|10-29|no wants|protective orders?|restraining order|returning party)\b/i,'RECORDS CHECK'],[/\b(animal control|animal services|(loose|stray|aggressive|vicious|barking|injured|dead|lost) (dogs?|cats?|horses?|cattle|cows?|animal|deer)|dogs? (bite|attack|at large|loose|in the roadway)|(horses?|cattle|cows?|livestock|deer) (on|in) the (road|roadway|highway|freeway|lanes)|mountain lion|coyote)\b/i,'ANIMAL'],
 ];
 // Colors by who handles the call: blue medical, red fire, orange police (split colors when more than one); green when resolved
 const SERVICES={medical:{label:'Medical',color:'#4a90ff'},fire:{label:'Fire',color:'#ff3b3b'},police:{label:'Police',color:'#ff8c1a'}};
@@ -466,7 +470,7 @@ const CODES={
  '11-54':['Suspicious vehicle','SUSPICIOUS','e'],'11-79':['Collision, ambulance responding','COLLISION','e'],'11-80':['Collision with major injuries','COLLISION','e'],'11-81':['Collision with minor injuries','COLLISION','e'],'11-82':['Collision, property damage only','COLLISION','e'],'11-83':['Collision, no details yet','COLLISION','e'],
  '11-84':['Direct traffic',null,'e'],'11-85':['Tow truck needed',null,'e'],'11-94':['Pedestrian stop','SUSPICIOUS','e'],'11-95':['Traffic stop','TRAFFIC STOP','e'],'11-96':['Checking a suspicious vehicle','SUSPICIOUS','e'],'11-97':['Time and security check',null,'e'],'11-98':['Meet another unit',null,'e'],'11-99':['Officer needs help, emergency','OFFICER NEEDS HELP','e'],
  'code 1':['Acknowledge / respond when convenient',null,'c'],'code 2':['Urgent, no lights or siren',null,'c'],'code 3':['Emergency, lights and siren',null,'c'],'code 4':['No further help needed',null,'c'],'code 5':['Stakeout, keep other units away',null,'c'],'code 6':['Out of the vehicle to investigate',null,'c'],'code 7':['Meal break',null,'c'],
- '148':['Resisting or obstructing an officer',null,'p'],'187':['Homicide','HOMICIDE','p'],'207':['Kidnapping','KIDNAPPING','p'],'211':['Robbery','ROBBERY','p'],'215':['Carjacking','ROBBERY','p'],'240':['Assault','ASSAULT','p'],'242':['Battery','ASSAULT','p'],'243':['Battery causing injury','ASSAULT','p'],'245':['Assault with a deadly weapon','WEAPON','p'],'246':['Shooting at an occupied home or vehicle','WEAPON','p'],
+ '148':['Resisting or obstructing an officer',null,'p'],'166':['Violating a court order (e.g. a protective order)',null,'p'],'273.6':['Violating a protective order',null,'p'],'187':['Homicide','HOMICIDE','p'],'207':['Kidnapping','KIDNAPPING','p'],'211':['Robbery','ROBBERY','p'],'215':['Carjacking','ROBBERY','p'],'240':['Assault','ASSAULT','p'],'242':['Battery','ASSAULT','p'],'243':['Battery causing injury','ASSAULT','p'],'245':['Assault with a deadly weapon','WEAPON','p'],'246':['Shooting at an occupied home or vehicle','WEAPON','p'],
  '261':['Rape','SEX CRIME','p'],'273.5':['Domestic violence','DOMESTIC','p'],'273a':['Child endangerment','CHILD WELFARE','p'],'314':['Indecent exposure','SEX CRIME','p'],'374':['Illegal dumping',null,'p'],'404':['Riot','DISTURBANCE','p'],'415':['Disturbance: fight, noise or loud person','DISTURBANCE / NOISE','p'],'417':['Brandishing a weapon','WEAPON','p'],'422':['Criminal threats','THREATS','p'],
  '451':['Arson','FIRE','p'],'459':['Burglary','BURGLARY','p'],'470':['Forgery','FRAUD','p'],'484':['Theft','THEFT','p'],'487':['Grand theft','THEFT','p'],'488':['Petty theft','THEFT','p'],'496':['Receiving stolen property','THEFT','p'],'530.5':['Identity theft','FRAUD','p'],'537':['Not paying a restaurant or hotel bill','FRAUD','p'],'594':['Vandalism','VANDALISM','p'],'597':['Animal cruelty','ANIMAL','p'],
  '602':['Trespassing','TRESPASS','p'],'647f':['Drunk in public','DISTURBANCE','p'],'653m':['Harassing phone calls','THREATS','p'],'5150':['Mental health hold (danger to self or others)','MENTAL HEALTH','w'],'5585':['Juvenile mental health hold','MENTAL HEALTH','w'],
@@ -493,6 +497,7 @@ function codesIn(text,locWords){
   const re4=/(^|[^\d.-])(\d{3,5}(?:\.\d)?)(?:\s?\(?([af])\)?)?(?![\d-])/gi;
   while((m=re4.exec(text))){const n=m[2],suf=(m[3]||'').toLowerCase(),at=m.index+m[1].length;
     if(suf&&CODES[n+suf])add(n+suf,m[0].slice(m[1].length),at,true);else if(CODES[n])add(n,n,at,true)}
+  const reP=/\b(?:PC|VC|HS)[- ]?(\d{3,5}(?:\.\d)?)/g;while((m=reP.exec(text)))if(CODES[m[1]])add(m[1],m[0],m.index); // "PC-166"
   const re5=/\b(BLS|ALS|MCI|RP|GOA|UTL|TC|DOA|ETA|CHP|ADW|BOLO|ATL|GSW|DUI|LKA|CPR)\b/g;while((m=re5.exec(text)))add(m[1],m[1],m.index);
   const re6=/\b(calcord|tac)\b/gi;while((m=re6.exec(text)))add(m[1].toLowerCase(),m[0],m.index);
   return out.sort((a,b)=>a.at-b.at);
@@ -593,7 +598,7 @@ function morseFromText(t){
 // Everyday and radio words that should never be "corrected" into a street name.
 const COMMON_EN=new Set(('the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she or an will my one all would there their what so up out if about who get which go me when make can like time no just him know take people into year your good some could them see other than then now look only come its over think also back after use two how our work first well way even new want because any these give day most us is are was were been has had did said going got yeah yes okay ok copy units unit clear code respond responding en route enroute arrived arrival scene subject suspect male female vehicle car truck white black blue red green silver gray grey tan brown wearing shirt hoodie jacket pants shorts hat last seen heading northbound southbound eastbound westbound north south east west party reporting injuries unknown possible medical fire engine medic medics ambulance sheriff deputy officer police dispatch county city station traffic collision alarm check welfare stolen warrant license plate negative affirmative standby stand cover backup need needs area block address location near front behind inside outside house home apartment lot parking store school park beach bridge freeway highway road street avenue drive lane court place boulevard circle ramp exit mile miles feet left right side corner intersection three four five six seven eight nine ten eleven twelve hundred thousand adult juvenile kid child man woman guy lady person dog phone call called caller advised advise states stating report reports refusing transport hospital jail cite cited arrest custody detained contact contacted attempt attempting coming leave leaving fled running walking driving stopped stop parked blocking lanes roadway shoulder median off under around toward towards via per while still again same another each every few more less much many very too here where why whom whose those thank thanks please sir roger received checking info information description update updated status available busy break priority emergency urgent cancel canceled disregard correction repeat male female').split(' '));
 // Dispatch vocabulary used to prime the speech model (local names it otherwise mishears).
-const PROMPT_BASE='San Luis Obispo County sheriff, police and fire dispatch. Units, copy, 10-4, 10-15, 10-97, 11-82, 11-83, 415, 459, 5150, Code 2, Code 3, Code 4, RP, BLS, ALS, French Hospital, Sierra Vista, Twin Cities.';
+const PROMPT_BASE='San Luis Obispo County sheriff, police and fire dispatch. Units, copy, 10-4, 10-15, 10-97, 11-82, 11-83, 415, 459, 5150, Code 2, Code 3, Code 4, RP, BLS, ALS, French Hospital, Sierra Vista, Twin Cities. DOB, first of, last of, middle of, returns valid, suspended, probation, 10-29, no wants.';
 const PROMPT_TOWNS='Paso Robles, Atascadero, Templeton, Morro Bay, Los Osos, Cambria, Pismo Beach, Grover Beach, Arroyo Grande, Nipomo, Oceano, Avila Beach.';
 const PROMPT_STREETS=['Higuera','Marsh','Santa Rosa','Foothill','Broad','Johnson','Madonna','Los Osos Valley Road','Tank Farm','El Camino Real','Grand Avenue','Niblick','Morro Road','Halcyon','Oak Park','Quintana'];
 
@@ -994,6 +999,7 @@ Rules:
 - A code-looking number said right before a street is a house number: "10-95, 10-95, West McCoy Lane" = 1095 West McCoy Lane.
 - "cross of A and B" gives the cross streets of the address before it.
 - Calls can come from Santa Maria and other nearby cities; real addresses there are fine even when no candidate street matches.
+- Records checks: "DOV" is "DOB". "first of", "last of" and "middle of" introduce a spelled name; keep names as heard, don't guess others. "returns clear/valid/suspended", "10-29", "no wants" are records results, not places.
 - Numbers after room, bed, suite, apartment, space or gate are inside a building: never a highway or house number ("room 101" is not US 101).
 - Hospitals are named by short names: "French" = French Hospital, "Sierra" or "Sierra Vista" = Sierra Vista Hospital, "Twin" or "Twin Cities" = Twin Cities Hospital, "Marian" = Marian Hospital (Santa Maria), "AG hospital" = Arroyo Grande Hospital. For a patient move ("going to French, room 101, bed 2"), the location is the destination hospital: put it in "place".
 - "street" and "cross" should be copied exactly from the candidate street list. Highways can be given as "US 101", "CA 1", "CA 46", etc.
@@ -1050,6 +1056,29 @@ async function claudeCheck(sys,user){
     const out=JSON.parse(m[0]);$('claudeNote').textContent='Claude is checking calls.';countUse('claude');return out&&typeof out.text==='string'?{...out,_model:'claude'}:null;
   }catch(e){$('claudeNote').textContent='Claude check failed: '+e.message;return null}
 }
+// Google Gemini (free key from aistudio.google.com): used when Groq's best model is busy or out for the day
+let geminiModel=null,geminiOutUntil=0;
+async function pickGeminiModel(key){
+  if(geminiModel)return geminiModel;
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(key),{signal:timeoutSignal(8000)});
+  const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||('HTTP '+r.status));
+  const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,'')).filter(n=>/flash/.test(n)&&!/(image|tts|audio|live|thinking|exp|preview-tts)/.test(n));
+  const score=n=>{const v=parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);return v*10+(/lite/.test(n)?0:2)-(/preview/.test(n)?1:0)};
+  names.sort((a,b)=>score(b)-score(a));geminiModel=names[0]||'gemini-2.5-flash-lite';return geminiModel;
+}
+async function geminiCheck(sys,user){
+  const key=store.get('geminiKey','');if(!key||Date.now()<geminiOutUntil)return null;
+  try{
+    const model=await pickGeminiModel(key);
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',signal:timeoutSignal(9000),headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:800}})});
+    const j=await r.json();
+    if(r.status===429){geminiOutUntil=Date.now()+(/day|daily|PerDay/i.test(JSON.stringify(j))?3600e3:60e3);$('geminiNote').textContent='Gemini hit its free limit; it will be used again later.';return null}
+    if(!r.ok){$('geminiNote').textContent='Gemini check failed: '+(j.error&&j.error.message||r.status);return null}
+    const txt=((j.candidates||[])[0]||{}).content?.parts?.map(p=>p.text||'').join('')||'';const m=txt.match(/\{[\s\S]*\}/);if(!m)return null;
+    const out=JSON.parse(m[0]);countUse('gemini');$('geminiNote').textContent=`Gemini (${model}) is helping check calls.`;return out&&typeof out.text==='string'?out:null;
+  }catch(e){$('geminiNote').textContent='Gemini check failed: '+e.message;return null}
+}
 async function aiCheck(entry){
   const cands=candidateStreets(entry.text);
   const recent=recentCalls(entry);
@@ -1060,6 +1089,7 @@ async function aiCheck(entry){
   {const c=await claudeCheck(AI_SYS,user);if(c){entry.aiModel='claude';return c}}
   const need=Math.ceil((AI_SYS.length+user.length)/3.6)+450;
   for(let i=0;i<AI_MODELS.length;i++){const model=AI_MODELS[i];
+    if(i===1&&store.get('geminiKey','')){const g=await geminiCheck(AI_SYS,user);if(g){entry.aiModel='gemini';return g}} // free Gemini before the weaker Groq backups
     if(Date.now()<(aiLimitedUntil[model]||0))continue;
     // the best model is worth a short wait if it's only busy for a moment
     if(i===0&&aiTokens(model)+need>7600){const oldest=(aiTokLog[model]||[])[0];const wait=oldest?60e3-(Date.now()-oldest[0]):0;if(wait>0&&wait<3500)await sleep(wait+100);else continue}
@@ -1089,7 +1119,7 @@ async function aiCheck(entry){
 // may only change words that were in doubt (unclear, or heard differently the second time) or turn them into real local names.
 const FILLER=new Set("a an the and of to uh um i i'll ill will be is are was it it's its that this he she they we you".split(' '));
 function trustedFix(entry,t){
-  if(!entry.aiModel||entry.aiModel===AI_MODELS[0]||entry.aiModel==='claude')return true;
+  if(!entry.aiModel||entry.aiModel===AI_MODELS[0]||entry.aiModel==='claude'||entry.aiModel==='gemini')return true;
   const doubt=new Set([...(entry.unc||[])].map(w=>String(w).toLowerCase()));
   const local=w=>streetIndex.has(w)||!!TOWNS[w]||!!SUFFIX[w]||LANDMARKS.some(l=>l.name.toLowerCase().split(/\W+/).includes(w))||(/^\d/.test(w)&&!!(CODES[w]||CODES[w.replace(/^(1[01])(\d)/,'$1-$2')]));
   const A=wordsOf(entry.text),B=wordsOf(t),pool=[...B],removed=[];
@@ -1555,6 +1585,7 @@ function callDetails(text){
 }
 const ADDR_TAIL=String.raw`(?:north|south|east|west|n|s|e|w)?\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|place|pl|boulevard|blvd|circle|cir|terrace|trail|loop|parkway|pkwy)\b`;
 function codeFix(t){
+  t=t.replace(/\bD\.?\s?O\.?\s?V\b/g,'DOB').replace(/\bdate of birth\b/gi,'DOB'); // "DOV" is how "DOB" (date of birth) often comes through
   // a code-looking number said right before a street is a house number ("10-95, 10-95, West McCoy Lane" = 1095)
   t=t.replace(new RegExp(String.raw`\b(1[01])-(\d{2})((?:,?\s*\1-\2)*,?\s+)(?=${ADDR_TAIL})`,'gi'),(m,a,b,rest)=>a+b+rest.replace(new RegExp(a+'-'+b,'g'),a+b));
   return t.replace(/^(\s*)go to you\b/i,'$1Code 2').replace(/\bcode[- ](two|too|to)\b/gi,'Code 2').replace(/\bcode[- ](three|tree)\b/gi,'Code 3').replace(/\bcode[- ](four|for)\b(?!\s+(the|a|an|him|her|them|us|me)\b)/gi,'Code 4').replace(/\bcode[- ]one\b/gi,'Code 1')}
@@ -2281,9 +2312,9 @@ function paintUsage(){
     const kl=keyLim[model]&&Date.now()-keyLim[model].at<864e5?keyLim[model]:null,pct=Math.min(100,Math.round(mine/L.n*100));
     rows.push(`<div class="urow"><div class="ul"><span>${L.label}</span><b>${mine.toLocaleString()} / ${L.n.toLocaleString()} ${L.u} · ${pct}%</b></div><div class="ubar"><i style="width:${Math.max(pct,mine?2:0)}%"></i>${kl?`<i class="k" style="width:${Math.min(100,Math.round(kl.used/kl.limit*100))}%"></i>`:''}</div>${kl?`<div class="uk">Whole key: ${kl.used.toLocaleString()} / ${kl.limit.toLocaleString()} ${kl.what} (${Math.round(kl.used/kl.limit*100)}%) as of ${fmtTime(new Date(kl.at)).slice(0,5)}</div>`:''}</div>`);
   }
-  const c=used('claude'),allChecks=used('ai');
+  const c=used('claude'),gm=used('gemini'),allChecks=used('ai')+gm;
   rows.push(`<div class="uk" style="color:var(--muted)">AI checks from this browser today, all models: <b style="color:var(--text)">${allChecks.toLocaleString()}</b> (the per-model bars above only count checks since Oct 5, 12:05 AM)</div>`);
-  $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}${c?`<div class="uk" style="margin-top:6px">Claude checks today: ${c.toLocaleString()}</div>`:''}<div class="mnote">Bars show this browser's use over the last 24 hours. ${own?'You\'re using your own key.':'The shared key is used by everyone on the site, so the whole key can run out sooner; when Groq reports the whole key\'s total, it appears under the bar.'}</div>`;
+  $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}${gm?`<div class="uk" style="margin-top:6px">Gemini checks today: ${gm.toLocaleString()}</div>`:''}${c?`<div class="uk" style="margin-top:6px">Claude checks today: ${c.toLocaleString()}</div>`:''}<div class="mnote">Bars show this browser's use over the last 24 hours. ${own?'You\'re using your own key.':'The shared key is used by everyone on the site, so the whole key can run out sooner; when Groq reports the whole key\'s total, it appears under the bar.'}</div>`;
 }
 function openSettings(){paintEngine();paintUsage();$('settingsDlg').showModal()}
 function openSetup(){if(!$('setupDlg').open)$('setupDlg').showModal();setTimeout(()=>$('setupKey').focus(),100)}
@@ -2300,6 +2331,12 @@ $('engine').onchange=()=>{const v=$('engine').value;store.set('engine',v);cloudB
   if(v==='device'){if(listening){gpuCheck.then(()=>{paintModels();if(!worker)startWorker()})}}
   else{if(worker){worker.terminate();worker=null;modelReady=false}if(sttKey(v))aiStatus('READY · '+PROVIDERS[v].name.split(' ·')[0]);else aiStatus('NEEDS KEY')}
   paintEngine();pump()};
+function paintGemini(){const has=!!store.get('geminiKey','');$('geminiKey').value='';$('geminiRemove').style.display=has?'':'none';
+  $('geminiNote').textContent=has?'Gemini takes over the checks when Groq\'s best model is busy or used up for the day.':'Free: get a key at aistudio.google.com (no card). Gemini then takes over the checks when Groq\'s best model is used up for the day, instead of the weaker backups. On Google\'s free tier, what\'s sent may be used to improve their models.'}
+$('geminiSave').onclick=async()=>{const v=$('geminiKey').value.trim();if(!/^AI[A-Za-z0-9_-]{20,}$/.test(v)){$('geminiNote').textContent='That doesn\'t look like a Gemini API key (they start with AI).';return}
+  $('geminiNote').textContent='Checking the key…';geminiModel=null;try{const m=await pickGeminiModel(v);store.set('geminiKey',v);paintGemini();$('geminiNote').textContent=`Key works. Gemini (${m}) will take over when Groq's best model is used up.`}catch(e){geminiModel=null;$('geminiNote').textContent='Gemini didn\'t accept the key: '+e.message}};
+$('geminiRemove').onclick=()=>{store.del('geminiKey');geminiModel=null;paintGemini()};
+paintGemini();
 function paintClaude(){const has=!!store.get('anthropicKey','');$('claudeKey').value='';$('claudeRemove').style.display=has?'':'none';
   $('claudeNote').textContent=has?'Claude gives every call a final check with your key (billed to your Anthropic account).':'Every call is already heard twice and checked on Groq. Add an Anthropic API key (from console.anthropic.com) to have Claude give every call a final check. It\'s billed to that Anthropic account, likely a few dollars per day of listening, and saved only in this browser. A Claude Pro or Max subscription can\'t be used here; the API is billed separately.'}
 $('claudeSave').onclick=()=>{const v=$('claudeKey').value.trim();if(!/^sk-ant-/.test(v)){$('claudeNote').textContent='That doesn\'t look like an Anthropic key (they start with sk-ant-).';return}store.set('anthropicKey',v);paintClaude()};
