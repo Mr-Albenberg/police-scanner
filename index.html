@@ -57,25 +57,25 @@
     .grab{display:none}
     #transcript{flex:1;overflow-y:auto;overscroll-behavior:contain}
     .empty{padding:18px 16px;color:var(--muted);font-size:13px;line-height:1.6}.empty b{color:var(--text)}
-    .line{display:grid;grid-template-columns:40px 1fr;gap:10px;padding:10px 14px;border-bottom:1px solid #12293a;font-size:14px;line-height:1.5;animation:fade .35s;cursor:default}
-    .line.alert{background:#0a2c40d9;box-shadow:inset 0 0 0 1px #61dcff40}
+    .line{display:grid;grid-template-columns:58px 1fr;gap:10px;padding:10px 14px;border-bottom:1px solid #12293a;font-size:14px;line-height:1.5;animation:fade .35s;cursor:default}
+    .line.alert{background:#3a0f17aa;box-shadow:inset 0 0 0 1px #ff4e5e40}
     .line{position:relative}
     .line.located{cursor:pointer}
     .line::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--tbar,transparent)}
     .pin{border-radius:50%;border:2px solid #061019;box-shadow:0 0 0 1.5px #ffffffd0,0 3px 10px #000b;cursor:pointer;box-sizing:border-box}
     .pin.approx{opacity:.82;box-shadow:0 0 0 1.5px #ffffff70,0 3px 10px #000b}
-    .pin.zone{box-shadow:0 0 0 3px var(--cyan),0 0 16px #61dcffcc}
+    .pin.zone{box-shadow:0 0 0 3px var(--red),0 0 16px #ff4e5ecc}
     .line.located:hover{background:#0d2232}
     .line .t{color:var(--dim);font:700 11px ui-monospace,Menlo,monospace;padding-top:3px}
     .line .x{color:#d9ebf2;overflow-wrap:anywhere}
     mark{background:#ff864e33;color:#ffb48f;border-radius:3px;padding:0 2px}
-    mark.w{background:#61dcff33;color:#c4f3ff}
+    mark.w{background:#ff4e5e40;color:#ff9aa4}
     .fix{border-bottom:1px solid #61dcff99;cursor:help}
     .unc{text-decoration:underline dotted #e3b34f;text-underline-offset:3px;cursor:help}
     .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
     .tag{font-size:10px;font-weight:800;letter-spacing:.05em;padding:4px 8px;border-radius:5px;background:#102c3e;border:1px solid #2c5a72;color:#cfeaf5;line-height:1.3}
     .tag.loc{border-color:#4d6676;background:#14222c;color:#e3eef4}
-    .tag.al{background:#0b3346;border-color:var(--cyan);color:#cdf6ff}
+    .tag.al{background:#4a1018;border-color:var(--red);color:#ffc2c8}
     .tag.ok{background:#0f2f28;border-color:#2f7f62;color:#9ff0cf}
     .tag.pend{color:var(--muted)}
     @keyframes fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
@@ -142,6 +142,7 @@
     .pickbar{position:absolute;left:50%;bottom:max(28px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:8px;pointer-events:auto;width:min(420px,calc(100% - 24px))}
     .pickbar button{flex:1;min-height:52px;font-size:13px}
 
+    .sat{filter:brightness(.78) saturate(.9) contrast(1.05)}
     .leaflet-container{font-family:Inter,system-ui,sans-serif;background:#0c1418}
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#091522;color:var(--text);border:1px solid var(--line);box-shadow:0 10px 30px #000a}
     .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.5;max-width:300px}
@@ -157,9 +158,9 @@
     @keyframes pulse{70%{box-shadow:0 0 0 14px #61dcff00}100%{box-shadow:0 0 0 0 #61dcff00}}
     .maperr{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5}
 
-    #zoneEdge{position:fixed;inset:0;z-index:2600;pointer-events:none;border:3px solid var(--cyan);box-shadow:inset 0 0 24px #61dcff55;display:none;animation:edge 2.4s ease-in-out infinite}
+    #zoneEdge{position:fixed;inset:0;z-index:2600;pointer-events:none;border:3px solid var(--red);box-shadow:inset 0 0 24px #ff4e5e55;display:none;animation:edge 2.4s ease-in-out infinite}
     body.zone-active #zoneEdge{display:block}
-    @keyframes edge{50%{box-shadow:inset 0 0 6px #61dcff33}}
+    @keyframes edge{50%{box-shadow:inset 0 0 6px #ff4e5e33}}
     .play{min-height:0;width:30px;height:30px;padding:0;margin-top:7px;border-radius:8px;background:#0b1e2b;border:1px solid #2f6580;color:var(--cyan);display:grid;place-items:center;box-shadow:inset 0 0 0 1px #61dcff14;transition:border-color .15s,background .15s}
     .play svg{width:15px;height:15px}
     .play:hover{filter:none;border-color:var(--cyan);background:#0e2a3a}
@@ -186,9 +187,9 @@
     .line.resolved .x{color:#b7cad3}
     #errbar{display:none;position:fixed;z-index:2900;left:50%;transform:translateX(-50%);top:calc(var(--top) + 78px);width:min(560px,calc(100% - 24px));padding:10px 12px;border:1px solid var(--red);border-radius:9px;background:#3a0c14f2;color:#ffc2c8;font-size:13px;line-height:1.45}
     #errbar button{margin:6px 6px 0 0;min-height:28px;padding:0 9px;font-size:10px}
-    #toast{position:fixed;z-index:3000;top:var(--top);left:50%;transform:translate(-50%,-160%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#06283af2;border:1px solid var(--cyan);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
+    #toast{position:fixed;z-index:3000;top:var(--top);left:50%;transform:translate(-50%,-160%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#3a0c14f2;border:1px solid var(--red);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
     #toast.show{transform:translate(-50%,0)}
-    #toast b{display:block;color:#9fe9ff;font-size:10px;letter-spacing:.16em;margin-bottom:5px}
+    #toast b{display:block;color:#ff9aa4;font-size:10px;letter-spacing:.16em;margin-bottom:5px}
     #toast span{font-size:14px;line-height:1.45}
 
     dialog{width:min(560px,calc(100% - 20px));max-height:calc(100% - 40px);border:1px solid var(--line);border-radius:14px;padding:0;background:#091522;color:var(--text);box-shadow:0 24px 100px #000}
@@ -286,6 +287,7 @@
 
   <div class="mapbar">
     <button type="button" id="mbMe" title="Center the map on your zone"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><path d="M12 1.8v3.4M12 18.8v3.4M1.8 12h3.4M18.8 12h3.4"/></svg><span>MY ZONE</span></button>
+    <button type="button" id="mbLayer" title="Switch map style"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.5 8 12 13l9.5-5z"/><path d="m2.5 12.5 9.5 5 9.5-5"/><path d="m2.5 17 9.5 5 9.5-5"/></svg><span>DARK MAP</span></button>
     <button type="button" id="mbAll" title="Fit every pinned call on the map"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5v-5h5M20.5 8.5v-5h-5M3.5 15.5v5h5M20.5 15.5v5h-5"/><circle cx="9" cy="10" r="1.7" fill="currentColor" stroke="none"/><circle cx="15.2" cy="8.8" r="1.7" fill="currentColor" stroke="none"/><circle cx="12.5" cy="15.2" r="1.7" fill="currentColor" stroke="none"/></svg><span>ALL CALLS</span></button>
   </div>
   <div class="pick"><div class="cross"></div><div class="pickhint glass">Move the map so the circle is on your spot</div>
@@ -319,6 +321,10 @@
           <div class="row"><input id="sttKey" type="password" placeholder="Your own Groq key (optional)" autocomplete="off"><button class="secondary fit" id="sttKeySave" type="button">SAVE</button></div>
           <button class="linkbtn" id="useShared" type="button" style="display:none;padding:0;margin-top:4px">USE THE SHARED KEY INSTEAD</button>
           <div class="mnote" id="usage"></div>
+          <div class="lbl" style="margin-top:16px">CLAUDE DOUBLE-CHECK (OPTIONAL)</div>
+          <div class="row"><input id="claudeKey" type="password" placeholder="Add your Anthropic API key here" autocomplete="off"><button class="secondary fit" id="claudeSave" type="button">SAVE</button></div>
+          <button class="linkbtn" id="claudeRemove" type="button" style="display:none;padding:0;margin-top:4px">REMOVE CLAUDE KEY</button>
+          <div class="mnote" id="claudeNote"></div>
         </div>
       </div>
       <div><div class="lbl">TRANSCRIPT</div><div class="row"><button class="secondary" id="exportBtn" type="button">DOWNLOAD TEXT</button><button class="secondary" id="clearBtn" type="button">CLEAR ALL CALLS</button></div></div>
@@ -479,33 +485,47 @@ const MORSE={'.-':'A','-...':'B','-.-.':'C','-..':'D','.':'E','..-.':'F','--.':'
  '-----':'0','.----':'1','..---':'2','...--':'3','....-':'4','.....':'5','-....':'6','--...':'7','---..':'8','----.':'9','.-.-.-':'.','--..--':',','..--..':'?','-..-.':'/','-...-':'=','.-.-.':'+','-....-':'-','...---...':'SOS'};
 function goertzel(a,s,n,f,sr){const w=2*Math.PI*f/sr,c=2*Math.cos(w);let p1=0,p2=0;for(let i=s;i<s+n;i++){const p=a[i]+c*p1-p2;p2=p1;p1=p}return(p1*p1+p2*p2-c*p1*p2)/(n*n)}
 function morseDecode(a,sr=16000){
-  if(!a||a.length<sr*0.6)return null;
-  const W=Math.round(sr*0.012),H=Math.round(sr*0.004),nF=Math.floor((a.length-W)/H);if(nF<50)return null;
-  // 1) the strongest steady pitch between 350 and 1300 Hz
-  const en=new Float32Array(nF);for(let f=0;f<nF;f++){let q=0;for(let i=f*H;i<f*H+W;i++)q+=a[i]*a[i];en[f]=q/W}
-  const sorted=Float32Array.from(en).sort(),hiE=sorted[Math.floor(nF*0.9)];if(hiE<1e-5)return null;
-  const loudF=[];for(let f=0;f<nF;f++)if(en[f]>hiE*0.4)loudF.push(f);if(loudF.length<10)return null;
-  const probe=loudF.filter((_,i)=>i%Math.max(1,Math.floor(loudF.length/60))===0);
-  let best=0,f0=0;for(let fr=350;fr<=1300;fr+=10){let s=0;for(const f of probe)s+=goertzel(a,f*H,W*2>a.length-f*H?W:W,fr,sr);if(s>best){best=s;f0=fr}}
-  // 2) how much of the loud audio is that one tone (speech spreads across many pitches)
-  let tone=0,tot=0;for(const f of probe){tone+=goertzel(a,f*H,W,f0,sr)+goertzel(a,f*H,W,f0-25,sr)*0.5+goertzel(a,f*H,W,f0+25,sr)*0.5;tot+=en[f]}
-  const purity=tot>0?tone*2/tot:0;if(purity<0.55)return null;
-  // 3) on/off envelope at that pitch
-  const env=new Float32Array(nF);for(let f=0;f<nF;f++)env[f]=goertzel(a,f*H,W,f0,sr);
-  const es=Float32Array.from(env).sort(),lo=es[Math.floor(nF*0.15)],hi=es[Math.floor(nF*0.92)];if(hi<lo*8)return null;
-  const th=Math.sqrt(Math.max(lo,1e-12)*hi);
+  if(!a||a.length<sr*0.5)return null;
+  // 1) where is a steady keyed tone? 20 ms frames, strongest pitch 350-1600 Hz and how pure it is
+  const W=320,nF=Math.floor(a.length/W);if(nF<20)return null;
+  const en=new Float32Array(nF);for(let f=0;f<nF;f++){let q=0;for(let i=f*W;i<f*W+W;i++)q+=a[i]*a[i];en[f]=q/W}
+  const es=Float32Array.from(en).sort(),floorE=es[Math.floor(nF*0.15)]+1e-9,hiE=es[Math.floor(nF*0.97)];if(hiE<1e-6)return null;
+  const fq=new Float32Array(nF);
+  for(let f=0;f<nF;f++){if(en[f]<Math.max(floorE*2.5,hiE*0.02))continue;let best=0,bf=0;for(let fr=350;fr<=1600;fr+=25){const g=goertzel(a,f*W,W,fr,sr);if(g>best){best=g;bf=fr}}if(2*best/en[f]>0.62)fq[f]=bf}
+  const cnt=new Map();for(const v of fq)if(v)cnt.set(v,(cnt.get(v)||0)+1);
+  let f0=0,c0=0;for(const[k,v]of cnt){const c=v+(cnt.get(k-25)||0)+(cnt.get(k+25)||0);if(c>c0){c0=c;f0=k}}
+  if(c0<5)return null;
+  // 2) the stretch where that tone keys on and off (speech before or after it is left out)
+  const isT=f=>fq[f]&&Math.abs(fq[f]-f0)<=50,loudNon=f=>!isT(f)&&en[f]>Math.max(floorE*4,hiE*0.03);
+  const groups=[];let g=null,speechRun=0,gapRun=0;
+  for(let f=0;f<nF;f++){
+    if(isT(f)){if(!g){g={s:f,e:f,n:0}}g.e=f;g.n++;speechRun=0;gapRun=0}
+    else if(g){gapRun++;if(loudNon(f))speechRun++;else speechRun=Math.max(0,speechRun-1);if(speechRun>=10||gapRun>90){groups.push(g);g=null;speechRun=0;gapRun=0}}
+  }
+  if(g)groups.push(g);
+  const G=groups.sort((x,y)=>y.n-x.n)[0];if(!G||G.n<6)return null;
+  {let loud=0;for(let f=G.s;f<=G.e;f++)if(isT(f)||loudNon(f))loud++;if(G.n<loud*0.6)return null} // mostly tone, not voice
+  const s0=Math.max(0,(G.s-5)*W),s1=Math.min(a.length,(G.e+6)*W);
+  // 3) fine on/off envelope at that pitch
+  const w=Math.round(sr*0.012),h=Math.round(sr*0.004),n=Math.floor((s1-s0-w)/h);if(n<30)return null;
+  const env=new Float32Array(n);for(let k=0;k<n;k++)env[k]=goertzel(a,s0+k*h,w,f0,sr);
+  const vs=Float32Array.from(env).sort(),lo=vs[Math.floor(n*0.1)],hi=vs[Math.floor(n*0.9)];if(hi<lo*4)return null;
+  const th=Math.sqrt(Math.max(lo,hi*1e-4)*hi);
   const on=Array.from(env,v=>v>th);
-  for(let f=1;f<nF-1;f++)if(on[f-1]===on[f+1]&&on[f]!==on[f-1])on[f]=on[f-1]; // remove single-frame blips
-  const runs=[];let cur=on[0],len=0;for(const v of on){if(v===cur)len++;else{runs.push([cur,len*H/sr]);cur=v;len=1}}runs.push([cur,len*H/sr]);
+  for(let k=1;k<n-1;k++)if(on[k-1]===on[k+1]&&on[k]!==on[k-1])on[k]=on[k-1];
+  const runs=[];let cur=on[0],len=0;for(const v of on){if(v===cur)len++;else{runs.push([cur,len*h/sr]);cur=v;len=1}}runs.push([cur,len*h/sr]);
   while(runs.length&&!runs[0][0])runs.shift();while(runs.length&&!runs[runs.length-1][0])runs.pop();
-  const marks=runs.filter(r=>r[0]).map(r=>r[1]);if(marks.length<3||marks.length>400)return null;
-  // 4) dot length: the shorter cluster of beep lengths (or the short gaps when all beeps are alike)
+  const marks=runs.filter(r=>r[0]).map(r=>r[1]);if(marks.length<5||marks.length>500)return null;
+  // keyed tones hold a steady loudness; syllables swell and fade
+  {let m=0,q=0,c=0;for(let k=0;k<n;k++)if(on[k]){const v=Math.sqrt(env[k]);m+=v;q+=v*v;c++}m/=c;const cv=Math.sqrt(Math.max(0,q/c-m*m))/m;if(cv>0.42)return null}
+  // 4) dot length from the short beeps (or short gaps when every beep is the same length)
   const ms=[...marks].sort((x,y)=>x-y),gaps=runs.filter(r=>!r[0]).map(r=>r[1]).sort((x,y)=>x-y);
-  let unit=ms[Math.floor(ms.length*0.2)];
-  if(ms[ms.length-1]<unit*2&&gaps.length){const g=gaps[Math.floor(gaps.length*0.2)];if(g<unit*0.7)unit=g}
-  if(unit<0.025||unit>0.25)return null; // ~5 to 48 words per minute
-  // beeps must come in one or two lengths; speech syllables don't
-  if(marks.some(m=>m>unit*5))return null;
+  let unit=ms[Math.floor(ms.length*0.25)];
+  if(ms[ms.length-1]<unit*2&&gaps.length){const gg=gaps[Math.floor(gaps.length*0.25)];if(gg<unit*0.7)unit=gg}
+  // between the two lengths if the beeps clearly come in two sizes
+  {const big=ms.filter(m=>m>unit*2);if(big.length){const dah=big[Math.floor(big.length/2)];unit=Math.min(unit,dah/3*1.15)}}
+  if(unit<0.02||unit>0.3)return null;
+  if(marks.filter(m=>m>unit*5).length>marks.length*0.15)return null;
   let sym='',out='',pattern='';
   for(const[isOn,d]of runs){
     if(isOn)sym+=d>unit*2?'-':'.';
@@ -514,9 +534,9 @@ function morseDecode(a,sr=16000){
   }
   if(sym){out+=MORSE[sym]||'?';pattern+=sym}
   out=out.replace(/\s+/g,' ').trim();const chars=out.replace(/ /g,'');
-  if(chars.length<2||(chars.match(/\?/g)||[]).length>chars.length*0.3)return null;
-  if(new Set(chars).size<2||!/\./.test(pattern)||!/-/.test(pattern))return null; // plain repeated beeps are alert tones, not Morse
-  return{text:out,pattern:pattern.trim(),wpm:Math.round(1.2/unit),hz:f0};
+  if(chars.length<3||(chars.match(/\?/g)||[]).length>chars.length*0.25)return null;
+  if(new Set(chars).size<2||!/\./.test(pattern)||!/-/.test(pattern))return null;
+  return{text:out,pattern:pattern.trim(),wpm:Math.round(1.2/unit),hz:f0,start:s0/sr,end:s1/sr,speech:Math.max(0,(a.length-(s1-s0))/sr)};
 }
 // Alert tones (fire/EMS dispatch beeps): steady single pitches, unlike speech. Returns seconds of tone before any speech,
 // and how much of the loud audio is tone.
@@ -535,8 +555,8 @@ function toneScan(a,sr=16000){
 let lastTonesAt=0;
 // Sort out what a piece of audio is before spending a transcription on it
 function audioKind(item){
-  const mc=morseDecode(item.audio);if(mc)return{morse:mc};
-  const t=toneScan(item.audio),wall=item.wall||Date.now();
+  const mc=morseDecode(item.audio),t=toneScan(item.audio),wall=item.wall||Date.now();
+  if(mc)return{morse:mc,alsoSpeech:mc.speech>2.5&&t.speech>1.5}; // a call sign sent before or after someone talking
   if(t.frac>0.8&&t.speech<0.4){if(!item.partial)lastTonesAt=wall;return{tonesOnly:true}}
   return{toned:t.lead>=0.3||(wall-lastTonesAt>0&&wall-lastTonesAt<20000)};
 }
@@ -595,7 +615,7 @@ async function loadStreetData(){
       for(let j=0;j<f.length;j+=2){a+=f[j];b+=f[j+1];const X=b/1e5*KX,Y=a/1e5*KY;x[k]=X;y[k]=Y;if(X<x0)x0=X;if(X>x1)x1=X;if(Y<y0)y0=Y;if(Y>y1)y1=Y;k++}
       bb[i*4]=x0;bb[i*4+1]=y0;bb[i*4+2]=x1;bb[i*4+3]=y1}
     off[n]=k;
-    Object.assign(SD,{names:d.names,refs:d.refs,wn,wr,wc,off,x,y,bb});if(d.county)COUNTY=d.county;
+    Object.assign(SD,{names:d.names,refs:d.refs,wn,wr,wc,off,x,y,bb});if(d.county){COUNTY=d.county;drawCountyMask()}
     for(let i=0;i<n;i++){
       if(wn[i]>=0){const nm=d.names[wn[i]];let l=SD.byName.get(nm);if(!l)SD.byName.set(nm,l=[]);l.push(i)}
       if(wr[i]>=0)for(const r0 of d.refs[wr[i]].split(';')){const r1=r0.trim();let l=SD.byRef.get(r1);if(!l)SD.byRef.set(r1,l=[]);l.push(i)}
@@ -615,10 +635,19 @@ async function loadStreetData(){
 let COUNTY=null;
 function inCountyPt(lat,lon){if(!COUNTY)return lat>BBOX.s&&lat<BBOX.n&&lon>BBOX.w&&lon<BBOX.e;let c=false;for(let i=0,j=COUNTY.length-1;i<COUNTY.length;j=i++){const a=COUNTY[i],b=COUNTY[j];if((a[0]>lat)!==(b[0]>lat)&&lon<(b[1]-a[1])*(lat-a[0])/(b[0]-a[0])+a[1])c=!c}return c}
 // Places dispatch names without an address (coordinates from OpenStreetMap)
-const LANDMARKS=[["Cuesta Grade", "cuesta (grade|pass|summit)", 35.3489, -120.6309, 1], ["Madonna Inn", "madonna inn", 35.267, -120.6752, 0], ["Cal Poly", "cal poly", 35.3075, -120.6646, 1], ["Cuesta College", "cuesta college", 35.329, -120.7406, 0], ["Morro Rock", "morro rock", 35.3697, -120.8677, 0], ["Hearst Castle", "hearst castle", 35.6487, -121.1858, 0], ["Pismo Pier", "pismo (beach )?pier", 35.1383, -120.6446, 0], ["Avila Pier", "avila (beach )?pier", 35.1766, -120.7345, 0], ["Oceano Dunes", "oceano dunes|the dunes", 35.0467, -120.6125, 1], ["Santa Margarita Lake", "santa margarita lake", 35.3286, -120.4824, 1], ["Diablo Canyon", "diablo canyon|diablo power", 35.2118, -120.8547, 1], ["Men's Colony", "men'?s colony|\\bcmc\\b", 35.324, -120.7025, 0], ["SLO Airport", "(slo|san luis|county) airport", 35.2375, -120.6433, 0], ["Paso Airport", "paso (robles )?airport", 35.6756, -120.6306, 0], ["Atascadero State Hospital", "atascadero state hospital|state hospital", 35.4639, -120.6348, 0], ["French Hospital", "french (hospital|medical)|(?<=\\b(?:to|at|from|into|for|by|leaving|left)\\s)french\\b(?!\\s+(camp|fr\\w*|toast|doors?|quarter|bread))", 35.2779, -120.6515, 0, 1], ["Sierra Vista Hospital", "sierra vista|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to|from)\\s)sierra\\b", 35.2924, -120.6659, 0, 1], ["Twin Cities Hospital", "twin cities|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to|at|from)\\s)twin\\b", 35.5551, -120.7201, 0, 1], ["Arroyo Grande Hospital", "arroyo grande (community )?hospital|\\bag hospital", 35.1133, -120.5904, 0, 1], ["Marian Hospital", "marian (regional|medical|hospital)|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to)\\s)marian\\b", 34.9510, -120.4133, 0, 1], ["Camp San Luis", "camp san luis", 35.338, -120.6982, 1], ["Camp Roberts", "camp roberts", 35.7908, -120.7782, 1], ["Mid-State Fair", "mid-? ?state fair|event center|fairgrounds", 35.6381, -120.6875, 0], ["County Jail", "county jail|\\bthe jail\\b", 35.3208, -120.7272, 0], ["Laguna Lake", "laguna lake", 35.2655, -120.6906, 1], ["Montana de Oro", "montana de oro|montaña de oro", 35.2938, -120.8616, 1], ["Shell Beach", "shell beach", 35.1553, -120.6724, 1], ["Mission San Luis Obispo", "mission san luis|mission plaza", 35.2808, -120.665, 0], ["Mission San Miguel", "mission san miguel", 35.7444, -120.6979, 0], ["Spooner's Cove", "spooner'?s cove", 35.2744, -120.8883, 0], ["Dinosaur Caves", "dinosaur caves", 35.1537, -120.6646, 0], ["Port San Luis", "port san luis|harford pier", 35.1714, -120.7565, 0], ["Bishop Peak", "bishop'?s? peak", 35.3023, -120.6977, 1], ["Cerro San Luis", "cerro san luis|madonna mountain", 35.2828, -120.6804, 1], ["Whale Rock", "whale rock", 35.4583, -120.8691, 1], ["Lake Nacimiento", "lake nacimiento|nacimiento lake(?! drive)", 35.7305, -120.8694, 1], ["Carrizo Plain", "carrizo plain", 35.1146, -119.7234, 1], ["Pozo", "\\bpozo\\b", 35.3037, -120.3762, 1], ["Parkfield", "\\bparkfield\\b", 35.8996, -120.4326, 1], ["Cholame", "\\bcholame\\b", 35.7239, -120.2965, 1], ["Shandon", "\\bshandon\\b", 35.653, -120.3818, 1]].map(([name,rx,lat,lon,area,hosp])=>({name,re:new RegExp("\\b("+rx+")(?!\\s+(road|rd|street|st|avenue|ave|drive|dr|lane|ln|way|boulevard|blvd|court|ct|place|circle|highway|hwy)\\b)","i"),lat,lon,area:!!area,hosp:!!hosp}));
+const LANDMARKS=[["Cuesta Grade", "cuesta (grade|pass|summit)", 35.3489, -120.6309, 1], ["Madonna Inn", "madonna inn", 35.267, -120.6752, 0], ["Cal Poly Performing Arts Center (PAC)", "pac\\b|pack center|p\\.? ?a\\.? ?c\\.? center|performing arts( center)?|cohan (center|performing)", 35.2995, -120.65726, 0], ["Cal Poly Rec Center", "rec(reation)? center", 35.29818, -120.66015, 0, 0, 1], ["Cal Poly Mott Athletics Center", "mott (gym|athletics|center|physical)", 35.29877, -120.65881, 0, 0, 1], ["Cal Poly Kennedy Library", "kennedy library|cal poly library", 35.30186, -120.66407, 0], ["Cal Poly University Union", "university union|\\buu\\b|julian mcphee", 35.30022, -120.65872, 0, 0, 1], ["Poly Canyon Village", "poly canyon village|\\bpcv\\b", 35.30774, -120.65864, 0], ["Cerro Vista Apartments", "cerro vista", 35.30493, -120.65697, 0], ["yakʔitʸutʸu (Cal Poly)", "yak ?it ?yut ?yu|yakitutu|yakitootoo", 35.29757, -120.65513, 0], ["Cal Poly Baker Center", "baker (center|science)", 35.30122, -120.66081, 0, 0, 1], ["Cal Poly Administration Building", "admin(istration)? building", 35.30098, -120.65861, 0, 0, 1], ["Cal Poly Engineering East", "engineering east", 35.30027, -120.6613, 0, 0, 1], ["Cal Poly Engineering West", "engineering west", 35.3003, -120.66293, 0, 0, 1], ["Cal Poly Engineering IV", "engineering (iv|4|four)", 35.30292, -120.66488, 0, 0, 1], ["Cal Poly Dexter Building", "dexter (building|lawn)", 35.3011, -120.66345, 0, 0, 1], ["Cal Poly Davidson Music Center", "davidson music|music building", 35.29932, -120.65798, 0, 0, 1], ["Cal Poly Fisher Science", "fisher science", 35.30219, -120.65922, 0, 0, 1], ["Spanos Stadium (Cal Poly)", "spanos stadium|mustang (memorial field|stadium)", 35.29843, -120.66504, 0], ["Baggett Stadium (Cal Poly)", "baggett( stadium)?", 35.30666, -120.66489, 0], ["Vista Grande (Cal Poly)", "vista grande", 35.29931, -120.65589, 0, 0, 1], ["Cal Poly University Police", "university police|cal poly (pd|police)", 35.3038, -120.66176, 0], ["Grand Ave Parking Structure (Cal Poly)", "grand (avenue |ave )?parking structure", 35.29818, -120.65739, 0, 0, 1], ["Tenaya Hall (Cal Poly)", "tenaya hall", 35.30001, -120.65649, 0, 0, 1], ["Trinity Hall (Cal Poly)", "trinity hall", 35.30186, -120.65709, 0, 0, 1], ["Fremont Hall (Cal Poly)", "fremont hall", 35.30028, -120.65582, 0, 0, 1], ["Santa Lucia Hall (Cal Poly)", "santa lucia hall", 35.30158, -120.65772, 0, 0, 1], ["Muir Hall (Cal Poly)", "muir hall", 35.30091, -120.65671, 0, 0, 1], ["Sequoia Hall (Cal Poly)", "sequoia hall", 35.30069, -120.65738, 0, 0, 1], ["Yosemite Hall (Cal Poly)", "yosemite hall", 35.29793, -120.65354, 0, 0, 1], ["Sierra Madre Hall (Cal Poly)", "sierra madre hall", 35.29888, -120.65469, 0, 0, 1], ["Cal Poly", "cal poly", 35.3075, -120.6646, 1], ["Cuesta College", "cuesta college", 35.329, -120.7406, 0], ["Morro Rock", "morro rock", 35.3697, -120.8677, 0], ["Hearst Castle", "hearst castle", 35.6487, -121.1858, 0], ["Pismo Pier", "pismo (beach )?pier", 35.1383, -120.6446, 0], ["Avila Pier", "avila (beach )?pier", 35.1766, -120.7345, 0], ["Oceano Dunes", "oceano dunes|the dunes", 35.0467, -120.6125, 1], ["Santa Margarita Lake", "santa margarita lake", 35.3286, -120.4824, 1], ["Diablo Canyon", "diablo canyon|diablo power", 35.2118, -120.8547, 1], ["Men's Colony", "men'?s colony|\\bcmc\\b", 35.324, -120.7025, 0], ["SLO Airport", "(slo|san luis|county) airport", 35.2375, -120.6433, 0], ["Paso Airport", "paso (robles )?airport", 35.6756, -120.6306, 0], ["Atascadero State Hospital", "atascadero state hospital|state hospital", 35.4639, -120.6348, 0], ["French Hospital", "french (hospital|medical)|(?<=\\b(?:to|at|from|into|for|by|leaving|left)\\s)french\\b(?!\\s+(camp|fr\\w*|toast|doors?|quarter|bread))", 35.2779, -120.6515, 0, 1], ["Sierra Vista Hospital", "sierra vista|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to|from)\\s)sierra\\b", 35.2924, -120.6659, 0, 1], ["Twin Cities Hospital", "twin cities|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to|at|from)\\s)twin\\b", 35.5551, -120.7201, 0, 1], ["Arroyo Grande Hospital", "arroyo grande (community )?hospital|\\bag hospital", 35.1133, -120.5904, 0, 1], ["Marian Hospital", "marian (regional|medical|hospital)|(?<=\\b(?:going to|transport(?:ing|ed)? to|en ?route to|headed to|heading to)\\s)marian\\b", 34.9510, -120.4133, 0, 1], ["Camp San Luis", "camp san luis", 35.338, -120.6982, 1], ["Camp Roberts", "camp roberts", 35.7908, -120.7782, 1], ["Mid-State Fair", "mid-? ?state fair|event center|fairgrounds", 35.6381, -120.6875, 0], ["County Jail", "county jail|\\bthe jail\\b", 35.3208, -120.7272, 0], ["Laguna Lake", "laguna lake", 35.2655, -120.6906, 1], ["Montana de Oro", "montana de oro|montaña de oro", 35.2938, -120.8616, 1], ["Shell Beach", "shell beach", 35.1553, -120.6724, 1], ["Mission San Luis Obispo", "mission san luis|mission plaza", 35.2808, -120.665, 0], ["Mission San Miguel", "mission san miguel", 35.7444, -120.6979, 0], ["Spooner's Cove", "spooner'?s cove", 35.2744, -120.8883, 0], ["Dinosaur Caves", "dinosaur caves", 35.1537, -120.6646, 0], ["Port San Luis", "port san luis|harford pier", 35.1714, -120.7565, 0], ["Bishop Peak", "bishop'?s? peak", 35.3023, -120.6977, 1], ["Cerro San Luis", "cerro san luis|madonna mountain", 35.2828, -120.6804, 1], ["Whale Rock", "whale rock", 35.4583, -120.8691, 1], ["Lake Nacimiento", "lake nacimiento|nacimiento lake(?! drive)", 35.7305, -120.8694, 1], ["Carrizo Plain", "carrizo plain", 35.1146, -119.7234, 1], ["Pozo", "\\bpozo\\b", 35.3037, -120.3762, 1], ["Parkfield", "\\bparkfield\\b", 35.8996, -120.4326, 1], ["Cholame", "\\bcholame\\b", 35.7239, -120.2965, 1], ["Shandon", "\\bshandon\\b", 35.653, -120.3818, 1]].map(([name,rx,lat,lon,area,hosp,ctx])=>({ctx:!!ctx,name,re:new RegExp("\\b("+rx+")(?!\\s+(road|rd|street|st|avenue|ave|drive|dr|lane|ln|way|boulevard|blvd|court|ct|place|circle|highway|hwy)\\b)","i"),lat,lon,area:!!area,hosp:!!hosp}));
 // a place-name that should win over a weak reading (no pin, approximate, street only, or a highway with nothing else)
+// a named building or venue ("the Pack Center") is more exact than the nearby streets used to get there
+const venueBeats=(l,geo)=>!!(l&&!l.area&&geo&&geo.loc.type!=='address'&&geo.loc.type!=='landmark'&&dist([l.lat,l.lon],[geo.g.lat,geo.g.lon])<1500);
 const weakGeo=geo=>!geo||!geo.g.precise||geo.loc.type==='street'||/^(US|CA) \d+$/.test(geo.g.label||geo.loc.label||'');
-const landmarkIn=text=>LANDMARKS.find(l=>l.re.test(text))||null;
+// Cal Poly buildings by number ("Cal Poly ... Building 6"), only when the call is at Cal Poly
+const CP_BUILDINGS={1:'Cal Poly Administration Building',6:'Cal Poly Performing Arts Center (PAC)',20:'Cal Poly Engineering East',21:'Cal Poly Engineering West',33:'Cal Poly Fisher Science',34:'Cal Poly Dexter Building',35:'Cal Poly Kennedy Library',43:'Cal Poly Rec Center',45:'Cal Poly Davidson Music Center',60:'Cal Poly Mott Athletics Center',65:'Cal Poly University Union',180:'Cal Poly Baker Center',192:'Cal Poly Engineering IV'};
+function campusBuilding(text){
+  if(!/\b(cal poly|campus|poly canyon|university police)\b/i.test(text))return null;
+  const m=text.match(/\bbuilding\s+(?:number\s+)?(\d{1,3})\b/i);if(!m||!CP_BUILDINGS[+m[1]])return null;
+  const l=LANDMARKS.find(x=>x.name===CP_BUILDINGS[+m[1]]);return l?{...l,re:new RegExp('\\b(building\\s+(?:number\\s+)?'+m[1]+')\\b','i')}:null;
+}
+const landmarkIn=text=>{const atCP=/\b(cal poly|campus|poly canyon)\b/i.test(text),named=LANDMARKS.find(l=>(!l.ctx||atCP)&&l.re.test(text))||null;if(named&&!named.area)return named;return campusBuilding(text)||named};
 const landmarkGeo=(l,text)=>({g:{lat:l.lat,lon:l.lon,precise:!l.area,label:l.name},loc:{label:l.name,type:'landmark',words:text?locWordsFor(text,[l.name,(text.match(l.re)||[''])[0]]):l.name.toLowerCase().split(' ')}});
 // Named roads in neighboring counties, offered to the AI check when a road isn't in SLO County
 const REGIONAL_ROADS=['Airline Highway (CA 25, San Benito / Monterey County)','Jolon Road (Monterey County)','Interlake Road (Monterey County)','Lonoak Road (Monterey County)','Bitterwater Road (San Benito County)','Parkfield Coalinga Road (Monterey / Fresno County)','Foxen Canyon Road (Santa Barbara County)','Betteravia Road (Santa Maria)','Santa Maria Way (Santa Maria)','Broadway (Santa Maria)','Bradley Road (Santa Maria)','Tepusquet Road (Santa Barbara County)'];
@@ -917,12 +946,13 @@ async function geocode(loc,town){
    AI CHECK: each call with a location is reviewed against recent calls
    and the county street list (uses the same Groq key)
    ================================================================ */
-const AI_MODELS=['openai/gpt-oss-120b','openai/gpt-oss-20b','qwen/qwen3.8-27b'];
+const AI_MODELS=['openai/gpt-oss-120b','qwen/qwen3.8-27b','openai/gpt-oss-20b'];
 const aiLimitedUntil={};
 const AI_SYS=`You check speech-to-text transcripts of San Luis Obispo County, California sheriff, police and fire radio. Return JSON only.
 Input: the new transcript, words the recognizer was unsure of, recent calls on the same channel (newest last), and real SLO County street names that sound like words in the transcript (with their town).
 Output: {"text": string, "location": null | {"number": string|null, "street": string|null, "cross": string|null, "town": string|null, "place": string|null}, "confidence": "high"|"medium"|"low", "same_incident": string|null, "resolves": string|null}
 Rules:
+- "second_hearing", when given, is another speech recognizer's hearing of the same audio. Where they differ, use whichever words make sense for SLO County dispatch radio (real street, town and place names, unit IDs, codes). You may take words from either hearing; don't add words neither one heard.
 - "text": the transcript with only clear mishearings fixed (street/town names, unit IDs, codes). Keep every word and the punctuation, including the unit or town at the start; never remove, add or invent content.
 - Unit call signs are not addresses: a number with a phonetic word like "23 Adam", "Adam 6-2", "3 Lincoln 12", "Paul 7", "Mary 40", "Sam 2" names a patrol unit.
 - Radio and penal codes (10-4, 10-15, 10-97, 11-82, 11-83, 415, 459, 5150) are not house numbers. "Code 2", "Code 3", "Code 4" are often misheard (e.g. "go to you" at the start of a call is usually "Code 2").
@@ -933,6 +963,7 @@ Rules:
 - If the call places itself by two roads ("north of 101, north of 13th Street, overcrossing", "Highway 1 at Main", "Foothill just west of O'Connor", "Spring past 24th"), give them as "street" and "cross".
 - If a street suffix was spoken ("Mission Street"), pick the candidate with that same suffix, not a similar name ("Mission Lane").
 - Calls can also be in neighboring counties. If a numbered address names a road that is not in the list, give the real road in this region that best matches what was heard (speech recognition often swaps similar-sounding words), and include its town if known.
+- At Cal Poly, name the building or venue in "place": "Pack Center"/"PAC" = Performing Arts Center, "UU" = University Union, "Rec Center", "Mott Gym", "Kennedy Library", "Poly Canyon Village", "Baker Center", a residence hall, or "Building N". "Grand", "Perimeter" and "Via Carta" there are campus roads (Grand Avenue, South Perimeter Road).
 - Use "place" for a business or landmark ("car lot", "Costco", "Cal Poly", "the Madonna Inn"). If a candidate is marked "(known place)" and the call is at or on it ("on the Cuesta Grade"), put it in "place".
 - If the transcript only refers back to an earlier call ("same location", "on scene"), use that call's location.
 - "same_incident": the incident id (from recent calls) this transmission is about, if it continues one (same place, same units, "on scene", "arrived"); else null.
@@ -968,26 +999,55 @@ function candidateStreets(text){
 function recentCalls(entry){
   const now=Date.now();return lines.filter(l=>l!==entry&&l.final&&now-l.time<20*60e3).slice(-8).map(l=>`[${fmtTime(l.time).slice(0,5)}${l.inc?' incident '+l.inc.id+(l.inc.status==='resolved'?' (resolved)':''):''}] ${l.text}${l.inc?' → '+l.inc.label:''}`);
 }
+// Tokens each Groq model used in the last minute (free plan: 8,000 per minute per model)
+const aiTokLog={};
+function aiTokens(model){const now=Date.now(),l=(aiTokLog[model]||[]).filter(x=>now-x[0]<60e3);aiTokLog[model]=l;return l.reduce((s,x)=>s+x[1],0)}
+async function claudeCheck(sys,user){
+  const key=store.get('anthropicKey','');if(!key)return null;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:timeoutSignal(9000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:CLAUDE_MODEL,max_tokens:600,temperature:0,system:sys+'\nReply with the JSON object only.',messages:[{role:'user',content:user}]})});
+    const j=await r.json();
+    if(!r.ok){$('claudeNote').textContent='Claude check failed: '+(j.error&&j.error.message||r.status);return null}
+    const m=(j.content&&j.content[0]&&j.content[0].text||'').match(/\{[\s\S]*\}/);if(!m)return null;
+    const out=JSON.parse(m[0]);$('claudeNote').textContent='Claude is checking calls.';countUse('claude');return out&&typeof out.text==='string'?out:null;
+  }catch(e){$('claudeNote').textContent='Claude check failed: '+e.message;return null}
+}
 async function aiCheck(entry){
   const cands=candidateStreets(entry.text);
   const recent=recentCalls(entry);
   for(const r of recent){const m=r.match(/→ (.+)$/);if(m)for(const part of m[1].split(' & '))if(SD.byName.has(part.replace(/^\d+ /,'')))cands.push(`${part.replace(/^\d+ /,'')} (${streetTown(part.replace(/^\d+ /,''))})`)}
-  const user=JSON.stringify({transcript:entry.text,unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)]});
-  const key=sttKey('groq');
-  for(const model of AI_MODELS){
+  if(entry.alt)cands.push(...candidateStreets(entry.alt));
+  const user=JSON.stringify({transcript:entry.text,...(entry.alt?{second_hearing:entry.alt}:{}),unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)].slice(0,24)});
+  {const c=await claudeCheck(AI_SYS,user);if(c)return c}
+  const need=Math.ceil((AI_SYS.length+user.length)/3.6)+450;
+  for(let i=0;i<AI_MODELS.length;i++){const model=AI_MODELS[i];
     if(Date.now()<(aiLimitedUntil[model]||0))continue;
-    try{
-      const r=await groqFetch('/openai/v1/chat/completions',{method:'POST',signal:timeoutSignal(7000),headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model,messages:[{role:'system',content:AI_SYS},{role:'user',content:user}],response_format:{type:'json_object'},temperature:0,max_completion_tokens:500,...(model.startsWith('openai/')?{reasoning_effort:'low'}:{})})});
-      if(r.status===429){aiLimitedUntil[model]=Date.now()+1000*(+r.headers.get('retry-after')||30);continue}
-      if(!r.ok)continue;countUse('ai');
-      const j=await r.json();const out=JSON.parse(j.choices[0].message.content);
-      if(out&&typeof out.text==='string')return out;
-    }catch(e){console.warn('ai check',model,e)}
+    // the best model is worth a short wait if it's only busy for a moment
+    if(i===0&&aiTokens(model)+need>7600){const oldest=(aiTokLog[model]||[])[0];const wait=oldest?60e3-(Date.now()-oldest[0]):0;if(wait>0&&wait<3500)await sleep(wait+100);else continue}
+    else if(aiTokens(model)+need>7600)continue;
+    for(let attempt=0;attempt<2;attempt++){
+      try{
+        const r=await groqFetch('/openai/v1/chat/completions',{method:'POST',signal:timeoutSignal(8000),headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model,messages:[{role:'system',content:AI_SYS},{role:'user',content:user}],response_format:{type:'json_object'},temperature:0,max_completion_tokens:700,...(model.startsWith('openai/')?{reasoning_effort:'low'}:{})})});
+        if(r.status===429){if(i===0&&attempt===0){await sleep(2500);continue}aiLimitedUntil[model]=Date.now()+1000*(+r.headers.get('retry-after')||20);break}
+        if(!r.ok)break;countUse('ai');
+        const j=await r.json();(aiTokLog[model]=aiTokLog[model]||[]).push([Date.now(),(j.usage&&j.usage.total_tokens)||need]);
+        const out=JSON.parse(j.choices[0].message.content);
+        if(out&&typeof out.text==='string'){entry.aiModel=model;return out}
+        break;
+      }catch(e){console.warn('ai check',model,e);break}
+    }
   }
   return null;
 }
 // the check may correct words, never drop them
+// words of hearing A that hearing B didn't hear (ignoring case, punctuation and how numbers are written)
+function hearingDiff(a,b){
+  const norm=t=>wordsOf(String(t).replace(/(\d)-(\d)/g,'$1$2')).map(w=>w.replace(/-/g,'')),A=norm(a),B=norm(b),pool=[...B],out=[];
+  for(const w of A){const k=pool.findIndex(x=>x===w||simWord(w,x)>=0.8);if(k>=0)pool.splice(k,1);else if(!COMMON_EN.has(w)||/^\d/.test(w))out.push(w)}
+  return out;
+}
 function keepsAllWords(before,after){
   const A=wordsOf(before),B=wordsOf(after),pool=[...B];
   for(const w of A){let k=pool.indexOf(w);if(k<0)k=pool.findIndex(x=>simWord(w,x)>=0.5||x.replace(/-/g,'')===w.replace(/-/g,''));if(k<0&&/^\d/.test(w))k=pool.findIndex(x=>x.replace(/\D/g,'')===w.replace(/\D/g,''));
@@ -1014,10 +1074,10 @@ function roadSpec(nm){ // "US 101", "Highway 41", "101" -> the state/US highway
 }
 const placeOf=h=>{const a=(h&&h.address)||{};const t=a.city||a.town||a.village||a.hamlet||'';return t?', '+t:''};
 const nameExact=nm=>{if(!nm)return null;nm=String(nm).replace(/\s*\([^)]*\)\s*$/,'').trim();if(SD.byName.has(nm))return nm;const lc=nm.toLowerCase();for(const k of SD.byName.keys())if(k.toLowerCase()===lc)return k;return null};
-async function resolveAI(loc){
+async function resolveAI(loc,text){
   if(!loc)return null;
   const town=loc.town&&TOWNS[String(loc.town).toLowerCase()]?String(loc.town).toLowerCase():null;
-  if(loc.place&&!loc.number){const l=landmarkIn(String(loc.place));if(l)return landmarkGeo(l)}
+  if(loc.place&&!loc.number){const l=landmarkIn(String(loc.place))||(/cal poly|campus/i.test(String(text||''))?landmarkIn(String(loc.place)+' cal poly'):null);if(l&&!(l.area&&landmarkIn(String(text||''))&&!landmarkIn(String(text||'')).area))return landmarkGeo(l)}
   const inTown=(nm,t)=>!t||streetTowns(nm).includes(t);
   const fixTown=nm=>{if(!nm||inTown(nm,town))return nm;for(const alt of(SD.baseNames.get(baseOf(nm))||[]))if(inTown(alt,town))return alt;return nm};
   const st=fixTown(nameExact(loc.street)),cr=fixTown(nameExact(loc.cross));
@@ -1049,7 +1109,7 @@ async function resolveAI(loc){
 }
 // same as resolveAI, plus which words of the call to highlight
 async function resolveAIWords(loc,text){
-  const r=await resolveAI(loc);if(r)r.loc.words=locWordsFor(text,[loc.number,loc.street,loc.cross,loc.place,r.g.label]);return r;
+  const r=await resolveAI(loc,text);if(r)r.loc.words=locWordsFor(text,[loc.number,loc.street,loc.cross,loc.place,r.g.label]);return r;
 }
 
 /* ---- stream chunk decoding ---- */
@@ -1112,8 +1172,28 @@ const MAP_OK=!!window.L;
 if(!MAP_OK){const NOOP=new Proxy(function(){},{get:(t,k)=>k===Symbol.toPrimitive?()=>'':NOOP,apply:()=>NOOP});window.L=NOOP;$('map').innerHTML='<div class="maperr">The map couldn\'t load. Check your connection and reload. Transcripts and alerts still work.</div>'}
 const map=L.map('map',{zoomControl:false,preferCanvas:true,tapTolerance:20}).setView([35.28,-120.66],11);
 const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
-L.tileLayer(ESRI+'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'}).addTo(map);
-L.tileLayer(ESRI+'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:19}).addTo(map);
+const ATTR='Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, HERE, Garmin, &copy; OpenStreetMap contributors';
+const darkLayers=L.layerGroup([L.tileLayer(ESRI+'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:19,attribution:ATTR}),L.tileLayer(ESRI+'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:19})]);
+// Satellite photos with roads and place names; outside San Luis Obispo County is dimmed
+map.createPane('mask').style.zIndex=350;map.getPane('mask').style.pointerEvents='none';
+map.createPane('refs').style.zIndex=360;map.getPane('refs').style.pointerEvents='none';
+const ARC='https://server.arcgisonline.com/ArcGIS/rest/services/';
+const satLayers=L.layerGroup([L.tileLayer(ARC+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:18,maxZoom:19,className:'sat',attribution:ATTR}),
+  L.tileLayer(ARC+'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:18,maxZoom:19,pane:'refs',className:'satref'}),
+  L.tileLayer(ARC+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:18,maxZoom:19,pane:'refs'})]);
+let countyMask=null;
+function drawCountyMask(){
+  if(countyMask||!COUNTY||!MAP_OK)return;
+  const world=[[89,-179.9],[89,179.9],[-89,179.9],[-89,-179.9]],rend=L.canvas({pane:'mask'});
+  countyMask=L.layerGroup([L.polygon([world,COUNTY],{renderer:rend,stroke:false,fillColor:'#05090d',fillOpacity:.72,interactive:false}),
+    L.polygon(COUNTY,{renderer:rend,color:'#61dcff',weight:1.5,opacity:.55,fill:false,interactive:false})]);
+  if(mapStyle==='sat')countyMask.addTo(map);
+}
+let mapStyle=store.get('mapStyle','sat');
+function setMapStyle(v){mapStyle=v;store.set('mapStyle',v);
+  if(v==='sat'){map.removeLayer(darkLayers);satLayers.addTo(map);if(countyMask)countyMask.addTo(map)}else{map.removeLayer(satLayers);if(countyMask)map.removeLayer(countyMask);darkLayers.addTo(map)}
+  const b=$('mbLayer');if(b){b.querySelector('span').textContent=v==='sat'?'DARK MAP':'SATELLITE';b.title=v==='sat'?'Switch to the plain dark map':'Switch to satellite photos'}}
+setMapStyle(mapStyle);
 const incidentLayer=L.layerGroup().addTo(map);
 let me=null,meAcc=0,meMarker=null,meCircle=null,accCircle=null;
 const incidents=[];let incSeq=0;
@@ -1190,6 +1270,7 @@ setInterval(()=>{ // expire pins; hide replay buttons older than 30 min
   updateEdge();saveState();
 },30000);
 $('mbMe').onclick=()=>{if(meCircle)map.fitBounds(meCircle.getBounds(),{maxZoom:16,...fitPad()});else{$('searchInput').focus();$('where').textContent='Search an address, tap MY LOCATION, or tap the map to set your zone.'}};
+$('mbLayer').onclick=()=>setMapStyle(mapStyle==='sat'?'dark':'sat');setMapStyle(mapStyle);
 $('mbAll').onclick=()=>{const pts=incidents.map(i=>[i.lat,i.lon]);if(me)pts.push(me);if(pts.length>1)map.fitBounds(pts,{maxZoom:15,...fitPad()});else if(pts.length)map.setView(pts[0],15);else map.setView([35.28,-120.66],10)};
 function fitPad(){const w=innerWidth<=760;return w?{paddingTopLeft:[20,200],paddingBottomRight:[20,innerHeight*0.4]}:{paddingTopLeft:[440,140],paddingBottomRight:[150,40]}}
 
@@ -1381,7 +1462,7 @@ function drawLine(entry){
   const canPlay=entry.clip&&!entry.clipExpired&&Date.now()-entry.time<CLIP_KEEP;
   const play=canPlay?`<button class="play${entry.playing?' on':''}" type="button" aria-label="${entry.playing?'Stop':'Play'} this call" title="${entry.playing?'Stop':'Hear this call'}">${entry.playing?ICON_STOP:ICON_PLAY}</button>`:'';
   if(entry.check&&!entry.partial)tags.push(`<span class="tag chk" title="${esc(entry.checkNote||entry.check)}">${esc(entry.check)}</span>`);
-  el.innerHTML=`<div class="t">${fmtTime(entry.time).slice(0,5)}${play}</div><div class="x">${renderText(entry)}${tags.length?`<div class="tags">${tags.join('')}</div>`:''}</div>`;
+  el.innerHTML=`<div class="t">${fmtTime(entry.time)}${play}</div><div class="x">${renderText(entry)}${tags.length?`<div class="tags">${tags.join('')}</div>`:''}</div>`;
 }
 // Text work, Claude review and mapping happen before the call is shown.
 // common mishearings of response codes ("go to you" at the start of a call is "Code 2")
@@ -1390,6 +1471,7 @@ async function prepare(entry,merged,info={}){
   if(info.morse){const m=info.morse;Object.assign(entry,{text:m.text,morse:{pattern:m.pattern,wpm:m.wpm||0,hz:m.hz||0},fixes:[],unc:new Set(),results:[],hits:[],kinds:['MORSE CODE'],locs:[],geo:null,aiChecked:false,
     check:'✓ MORSE DECODED',checkNote:m.hz?`Decoded from a ${m.hz} Hz tone at about ${m.wpm} words per minute. Radio repeaters send their FCC call sign this way.`:'Dots and dashes in the transcript, decoded'});return}
   entry.inherited=false;entry.inheritedFrom=null; // a fresh hearing decides its own type first
+  entry.alt=info.alt||null;
   const snapped=snapNames(codeFix(merged.text));if(snapped.text!==merged.text)snapped.fixes=wordFixes(merged.text,snapped.text).concat(snapped.fixes.filter(f=>!wordFixes(merged.text,snapped.text).some(g=>g.to===f.to)));
   Object.assign(entry,{text:snapped.text,fixes:snapped.fixes,unc:merged.unc,primed:info.primed,plain:info.plain,results:[],hits:[],kinds:[],locs:[]});
   entry.check=info.cloud?'✓ '+info.cloud:info.typed?'TEST':info.single?'1 HEARING':merged.agree?'✓ HEARINGS AGREE':'✓ DOUBLE-CHECKED';
@@ -1405,7 +1487,7 @@ async function prepare(entry,merged,info={}){
   const ctxTown=town||(Date.now()-lastTownAt<5*60e3?lastTown:null);
   Object.assign(entry,{locs,kinds:kindsOf(entry.text,locs.flatMap(l=>l.words||[])),hits:watchMatches(entry.text)});
   for(const loc of locs.slice(0,2)){const g=await geocode(town?loc:{...loc,_carried:true},ctxTown);if(g&&(inCountyPt(g.lat,g.lon)||(loc.type==='address'&&inRegion(g.lat,g.lon)))){entry.geo={loc,g};break}}
-  {const l=landmarkIn(entry.text);if(l&&weakGeo(entry.geo)){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
+  {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||venueBeats(l,entry.geo))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
   // 2) AI check unless the local result is already solid (saves your free AI allowance)
   const solid=!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
   if(!solid&&!info.partial&&!info.typed&&aiOn()&&SD.ready&&needsCheck(entry.text,entry.unc)){
@@ -1413,9 +1495,10 @@ async function prepare(entry,merged,info={}){
     if(ai){
       const t=ai.text.trim(),ratio=t.length/Math.max(1,entry.text.length);
       const sameWords=wordsOf(t).join(' ')===wordsOf(entry.text).join(' '); // punctuation-only change: keep the original
-      if(t&&!sameWords&&ratio>0.6&&ratio<1.6&&t!==entry.text&&keepsAllWords(entry.text,t)){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t));entry.text=t;entry.unc=new Set()}
+      if(t&&!sameWords&&ratio>0.6&&ratio<1.6&&t!==entry.text&&(keepsAllWords(entry.text,t)||(entry.alt&&keepsAllWords(entry.alt,t)))){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t));entry.text=t;entry.unc=new Set()}
       entry.sameAs=ai.same_incident||null;entry.resolves=ai.resolves||null;
       entry.aiChecked=true;entry.check='✓ AI CHECKED';entry.checkNote='Transcript and location checked against recent calls and the county street list'+(ai.confidence?` (${ai.confidence} confidence)`:'');
+      {const said=extract(entry.text).town;if(said&&ai.location&&(ai.location.street||ai.location.place)&&String(ai.location.town||'').toLowerCase()!==townName(said).toLowerCase())ai.location.town=townName(said)}
       if(ai.location&&ai.location.number&&ai.location.street)ai.location.number=houseNumberFix(entry.text,String(ai.location.number),String(ai.location.street));
       let r=await resolveAIWords(ai.location,entry.text);
       if(r&&r.loc.s&&!placedStreet(entry.text,ai.location.street))r=null;
@@ -1428,7 +1511,7 @@ async function prepare(entry,merged,info={}){
       if(r&&ai.location.street){const t2=alignStreetWords(entry.text,String(ai.location.street).replace(/\s*\([^)]*\)\s*$/,''));if(t2!==entry.text){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t2));entry.text=t2;r.loc.words=locWordsFor(t2,[ai.location.number,ai.location.street,ai.location.cross,ai.location.place,r.g.label])}}
       if(r){entry.geo=r;if(ai.confidence==='low'&&!r._kept){r.g.precise=false;r.loc.exact=false}entry.locs=[r.loc];const tn=ai.location.town&&String(ai.location.town).toLowerCase();if(TOWNS[tn]){lastTown=tn;lastTownAt=Date.now()}}
       else if(ai.location===null&&!(entry.geo&&entry.geo.loc.said)){entry.geo=null;entry.locs=[]} // the check says there's no place in this call (a clearly named street like "San Luis Drive" stays)
-      {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||l.hosp&&/^(US|CA) \d+/.test(entry.geo.g.label||''))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
+      {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||venueBeats(l,entry.geo)||l.hosp&&/^(US|CA) \d+/.test(entry.geo.g.label||''))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
     }
   }  // 3) still nothing: a numbered address on a misheard out-of-county road ("9000 Fairlane Highway" → 9000 Airline Highway)
   if(!entry.geo&&!info.partial&&SD.ready){const r=await regionalFallback(entry);if(r){entry.geo=r;entry.locs=[r.loc]}}
@@ -1571,7 +1654,7 @@ $('testForm').onsubmit=e=>{e.preventDefault();const v=$('testInput').value.trim(
 $('clearBtn').onclick=()=>{focusedInc=null;lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
 $('exportBtn').onclick=()=>{const txt=lines.map(l=>`[${l.time.toLocaleString()}] ${l.text}${l.results.length?'  {'+l.results.map(r=>r.label).join('; ')+'}':''}`).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download=`slo-dispatch-${new Date().toISOString().slice(0,16).replace(':','')}.txt`;a.click()};
 // Phone sheet
-$('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--cyan)"></i>In your zone</span>`;
+$('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--red)"></i>In your zone</span>`;
 function setSheet(open){$('feed').classList.toggle('open',open);document.body.classList.toggle('sheet-open',open)}
 $('feedHead').onclick=e=>{if(e.target.closest('button'))return;if(innerWidth<=760)setSheet(!$('feed').classList.contains('open'))};
 document.querySelector('#feed .grab').onclick=()=>setSheet(!$('feed').classList.contains('open'));
@@ -1609,8 +1692,8 @@ const groqModel=()=>Date.now()<(groqLimited['whisper-large-v3']||0)?'whisper-lar
 const PROVIDERS={
   groq:{name:'GROQ · WHISPER LARGE V3',keyUrl:'https://console.groq.com/keys',ph:'gsk_…',
     check:k=>fetch((API_BASE||'https://api.groq.com')+'/openai/v1/models',{headers:{Authorization:'Bearer '+k}}),
-    async run(wav,prompt,key){
-      const model=groqModel();
+    async run(wav,prompt,key,terms,force){
+      const model=force||groqModel();
       const fd=new FormData();fd.append('file',wav,'call.wav');fd.append('model',model);fd.append('language','en');fd.append('temperature','0');fd.append('response_format','verbose_json');if(prompt)fd.append('prompt',prompt);
       const r=await groqFetch('/openai/v1/audio/transcriptions',{method:'POST',body:fd,signal:timeoutSignal(25000)});
       if(!r.ok){const e=await apiErr(r);e.model=model;throw e}countUse('stt:'+model);const j=await r.json();
@@ -1667,11 +1750,14 @@ let cloudPause=0,cloudBlocked=false,inflight=0;
 const entriesByTx=new Map();let idSeq=0;
 async function handleCloud(item){
   const ak=audioKind(item);
-  if(ak.morse){await showCall(item,{text:ak.morse.text,unc:new Set(),agree:true},{morse:ak.morse,partial:item.partial});return}
+  if(ak.morse){await showCall({...item,tx:item.tx!=null?item.tx+'-m':null},{text:ak.morse.text,unc:new Set(),agree:true},{morse:ak.morse,partial:item.partial});if(!ak.alsoSpeech)return}
   if(ak.tonesOnly)return; // dispatch beeps alone: nothing to transcribe; the call that follows is marked
   const prov=PROVIDERS[engine()],key=sttKey(),wav=encodeWav(item.audio);
   aiStatus('TRANSCRIBING');
-  let res;
+  let res,altP=null;
+  // a second, independent hearing on Groq's other Whisper model (its own free allowance) to double-check the words
+  if(engine()==='groq'&&!item.partial&&groqModel()==='whisper-large-v3'&&Date.now()>(groqLimited['whisper-large-v3-turbo']||0))
+    altP=prov.run(wav,currentPrompt,key,[],'whisper-large-v3-turbo').then(r=>cleanText(r.text)).catch(e=>{if(e.status===429)groqLimited['whisper-large-v3-turbo']=Date.now()+60e3;return null});
   try{
     res=await prov.run(wav,currentPrompt,key,keyTerms());
     let text=cleanText(res.text);
@@ -1688,7 +1774,9 @@ async function handleCloud(item){
   if(!res.text)return;
   {const mt=morseFromText(res.text);if(mt){await showCall(item,{text:mt.text,unc:new Set(),agree:true},{morse:mt,partial:item.partial});return}}
   const unc=new Set(res.unclear.flatMap(t=>wordsOf(t)).filter(w=>!COMMON_EN.has(w)&&w.length>2&&!/^\d/.test(w)));
-  await showCall(item,{text:res.text,unc,agree:!unc.size},{cloud:prov.name,partial:item.partial,toned:ak.toned});
+  let alt=altP?await altP:null;
+  if(alt&&!promptEcho(alt)){const d=hearingDiff(res.text,alt);if(d.length){for(const w of d)unc.add(w)}else alt=null}else alt=null;
+  await showCall(item,{text:res.text,unc,agree:!unc.size},{cloud:prov.name,partial:item.partial,toned:ak.toned,alt});
 }
 // one transcript line per radio call; partial results update it in place
 async function showCall(item,merged,info){
@@ -2021,6 +2109,11 @@ $('engine').onchange=()=>{const v=$('engine').value;store.set('engine',v);cloudB
   if(v==='device'){if(listening){gpuCheck.then(()=>{paintModels();if(!worker)startWorker()})}}
   else{if(worker){worker.terminate();worker=null;modelReady=false}if(sttKey(v))aiStatus('READY · '+PROVIDERS[v].name.split(' ·')[0]);else aiStatus('NEEDS KEY')}
   paintEngine();pump()};
+function paintClaude(){const has=!!store.get('anthropicKey','');$('claudeKey').value='';$('claudeRemove').style.display=has?'':'none';
+  $('claudeNote').textContent=has?'Claude is double-checking calls with your key (billed to your Anthropic account, roughly $1 per day of listening).':'Every call is already heard twice and checked on Groq. Add an Anthropic key to have Claude do the check instead; it\'s billed to your Anthropic account (roughly $1 per day of listening) and saved only in this browser.'}
+$('claudeSave').onclick=()=>{const v=$('claudeKey').value.trim();if(!/^sk-ant-/.test(v)){$('claudeNote').textContent='That doesn\'t look like an Anthropic key (they start with sk-ant-).';return}store.set('anthropicKey',v);paintClaude()};
+$('claudeRemove').onclick=()=>{store.del('anthropicKey');paintClaude()};
+paintClaude();
 $('useShared').onclick=()=>{store.del('sttKey_groq');cloudBlocked=false;paintEngine();aiStatus('READY · GROQ')};
 $('sttKeySave').onclick=async()=>{const v=$('sttKey').value.trim();if(!v)return;if(await saveKey(engine(),v,$('engineNote'))){$('sttKey').value='';paintEngine();$('engineNote').textContent='Your key works and is saved in this browser. Transcribing with it now.'}};
 $('setupSave').onclick=async()=>{if(await saveKey('groq',$('setupKey').value,$('setupNote'))){$('setupNote').textContent='Connected. New calls will be transcribed as they come in.';setTimeout(()=>$('setupDlg').close(),900)}};
