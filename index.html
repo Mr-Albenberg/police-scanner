@@ -1034,7 +1034,7 @@ function candidateStreets(text){
   return[...new Set(roads),...[...new Set(out)].slice(0,24).map(nm=>`${nm} (${streetTown(nm)})`)];
 }
 function recentCalls(entry){
-  const now=Date.now();return lines.filter(l=>l!==entry&&l.final&&now-l.time<20*60e3).slice(-5).map(l=>`[${fmtTime(l.time).slice(0,5)}${l.inc?' incident '+l.inc.id+(l.inc.status==='resolved'?' (resolved)':''):''}] ${l.text}${l.inc?' → '+l.inc.label:''}`);
+  const now=Date.now();return lines.filter(l=>l!==entry&&l.final&&now-l.time<20*60e3).slice(-8).map(l=>`[${fmtTime(l.time).slice(0,5)}${l.inc?' incident '+l.inc.id+(l.inc.status==='resolved'?' (resolved)':''):''}] ${l.text}${l.inc?' → '+l.inc.label:''}`);
 }
 // Tokens each Groq model used in the last minute (free plan: 8,000 per minute per model)
 const aiTokLog={};
@@ -1056,7 +1056,7 @@ async function aiCheck(entry){
   for(const r of recent){const m=r.match(/→ (.+)$/);if(m)for(const part of m[1].split(' & '))if(SD.byName.has(part.replace(/^\d+ /,'')))cands.push(`${part.replace(/^\d+ /,'')} (${streetTown(part.replace(/^\d+ /,''))})`)}
   if(entry.alt)cands.push(...candidateStreets(entry.alt));
   for(const c of crossNamesIn(entry.text)){cands.push(`${c.canon} (${streetTown(c.canon)})`);for(const nm of [...streetsMeeting(c).keys()].slice(0,10))cands.push(`${nm} (${streetTown(nm)}, meets ${c.canon})`)}
-  const user=JSON.stringify({transcript:entry.text,...(entry.alt?{second_hearing:entry.alt}:{}),unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)].slice(0,16)});
+  const user=JSON.stringify({transcript:entry.text,...(entry.alt?{second_hearing:entry.alt}:{}),unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)].slice(0,24)});
   {const c=await claudeCheck(AI_SYS,user);if(c){entry.aiModel='claude';return c}}
   const need=Math.ceil((AI_SYS.length+user.length)/3.6)+450;
   for(let i=0;i<AI_MODELS.length;i++){const model=AI_MODELS[i];
@@ -1584,7 +1584,7 @@ async function prepare(entry,merged,info={}){
   if(!info.partial&&(!entry.geo||!entry.geo.g.house)){const ra=await regionalAddress(entry);if(ra){entry.geo=ra;entry.locs=[ra.loc]}}
   // 2) AI check unless the local result is already solid (saves your free AI allowance)
   const solid=!entry.plate&&!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
-  const claudeAll=!!store.get('anthropicKey','')&&wordsOf(entry.text).length>=3; // with your own Claude key, every call is double-checked
+  const claudeAll=wordsOf(entry.text).length>=4; // accuracy first: every call of a few words or more gets the double-check (Groq, or Claude with your own key)
   if((!solid||claudeAll)&&!info.partial&&!info.typed&&aiOn()&&SD.ready&&(claudeAll||needsCheck(entry.text,entry.unc))){
     const ai=await aiCheck(entry);
     if(ai){
