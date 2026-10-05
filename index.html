@@ -180,7 +180,7 @@
     #feed.collapsed #legend{display:none}
     .tag.loc .xs{color:#9fb6c4;font-weight:650}
     .urow{margin:7px 0}.ul{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}.ul b{color:var(--text);font-weight:750;white-space:nowrap}
-    .ubar{position:relative;height:6px;border-radius:3px;background:#12293a;margin-top:4px;overflow:hidden}.ubar i{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:3px}.ubar i.k{background:#ff864e88}
+    .ubar{position:relative;height:6px;border-radius:3px;background:#12293a;margin-top:4px;overflow:hidden}.ubar i{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:3px}.ubar i.k{background:#ff864e}
     .uk{font-size:11px;color:#ffb48f;margin-top:3px}
     .tag.fixd{background:#2a1f08;border-color:#a8822e;color:#ffe2a6;cursor:help}
     .tag.plate{background:#f2f4f0;border-color:#c9d2cc;color:#1b2a6b;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}
@@ -336,8 +336,8 @@
           <div class="row"><input id="sttKey" type="password" placeholder="Your own Groq key (optional)" autocomplete="off"><button class="secondary fit" id="sttKeySave" type="button">SAVE</button></div>
           <button class="linkbtn" id="useShared" type="button" style="display:none;padding:0;margin-top:4px">USE THE SHARED KEY INSTEAD</button>
           <div class="mnote" id="usage"></div>
-          <div class="lbl" style="margin-top:16px">GEMINI BACKUP CHECK (OPTIONAL, FREE)</div>
-          <div class="row"><input id="geminiKey" type="password" placeholder="Add your Google Gemini API key here" autocomplete="off"><button class="secondary fit" id="geminiSave" type="button">SAVE</button></div>
+          <div class="lbl" style="margin-top:16px">GEMINI BACKUP CHECK (FREE)</div>
+          <div class="row"><input id="geminiKey" type="password" placeholder="Add your own Gemini key here (optional)" autocomplete="off"><button class="secondary fit" id="geminiSave" type="button">SAVE</button></div>
           <button class="linkbtn" id="geminiRemove" type="button" style="display:none;padding:0;margin-top:4px">REMOVE GEMINI KEY</button>
           <div class="mnote" id="geminiNote"></div>
           <div class="lbl" style="margin-top:16px">CLAUDE DOUBLE-CHECK (OPTIONAL)</div>
@@ -1058,25 +1058,33 @@ async function claudeCheck(sys,user){
 }
 // Google Gemini (free key from aistudio.google.com): used when Groq's best model is busy or out for the day
 let geminiModel=null,geminiOutUntil=0;
+const SHARED_GEMINI=(()=>{try{return atob(["dzhRblVIZ2NX", "VUZpMnJYUU1t", "MElQeEo0dks2", "NlBOODdFVGNu", "LXJJNXZJX0s2", "TlI4YkEuUUE="].join('')).split('').reverse().join('')}catch{return''}})(); // the site's built-in Gemini key (stored scrambled)
+const geminiKey=()=>store.get('geminiKey','')||SHARED_GEMINI;
+const GEMINI_PREFER=['gemini-3.5-flash-lite','gemini-flash-lite-latest','gemini-3.1-flash-lite']; // fast "lite" models answer in about a second
 async function pickGeminiModel(key){
   if(geminiModel)return geminiModel;
   const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='+encodeURIComponent(key),{signal:timeoutSignal(8000)});
   const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||('HTTP '+r.status));
-  const names=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,'')).filter(n=>/flash/.test(n)&&!/(image|tts|audio|live|thinking|exp|preview-tts)/.test(n));
-  const score=n=>{const v=parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);return v*10+(/lite/.test(n)?0:2)-(/preview/.test(n)?1:0)};
-  names.sort((a,b)=>score(b)-score(a));geminiModel=names[0]||'gemini-2.5-flash-lite';return geminiModel;
+  const have=new Set((j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.name.replace(/^models\//,'')));
+  const lites=[...have].filter(n=>/flash-lite/.test(n)&&!/(image|tts|audio|live|preview)/.test(n)).sort((a,b)=>parseFloat((b.match(/(\d+\.\d+)/)||[0,0])[1])-parseFloat((a.match(/(\d+\.\d+)/)||[0,0])[1]));
+  geminiModel=[...new Set([...GEMINI_PREFER.filter(n=>have.has(n)),...lites])];if(!geminiModel.length)geminiModel=['gemini-flash-lite-latest'];
+  return geminiModel;
 }
 async function geminiCheck(sys,user){
-  const key=store.get('geminiKey','');if(!key||Date.now()<geminiOutUntil)return null;
+  const key=geminiKey();if(!key||Date.now()<geminiOutUntil)return null;
   try{
-    const model=await pickGeminiModel(key);
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',signal:timeoutSignal(9000),headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:800}})});
-    const j=await r.json();
-    if(r.status===429){geminiOutUntil=Date.now()+(/day|daily|PerDay/i.test(JSON.stringify(j))?3600e3:60e3);$('geminiNote').textContent='Gemini hit its free limit; it will be used again later.';return null}
-    if(!r.ok){$('geminiNote').textContent='Gemini check failed: '+(j.error&&j.error.message||r.status);return null}
-    const txt=((j.candidates||[])[0]||{}).content?.parts?.map(p=>p.text||'').join('')||'';const m=txt.match(/\{[\s\S]*\}/);if(!m)return null;
-    const out=JSON.parse(m[0]);countUse('gemini');$('geminiNote').textContent=`Gemini (${model}) is helping check calls.`;return out&&typeof out.text==='string'?out:null;
+    const models=await pickGeminiModel(key);
+    for(const model of models.slice(0,2)){
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',signal:timeoutSignal(9000),headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{temperature:0,responseMimeType:'application/json',maxOutputTokens:800}})});
+      const j=await r.json().catch(()=>({}));
+      if(r.status===503||r.status===404||r.status===500)continue; // busy or retired: try the next fast model
+      if(r.status===429){geminiOutUntil=Date.now()+(/day|daily|PerDay/i.test(JSON.stringify(j))?3600e3:60e3);$('geminiNote').textContent='Gemini hit its free limit; it will be used again later.';return null}
+      if(!r.ok){$('geminiNote').textContent='Gemini check failed: '+(j.error&&j.error.message||r.status);return null}
+      const txt=(((j.candidates||[])[0]||{}).content||{parts:[]}).parts.map(p=>p.text||'').join('');const m=txt.match(/\{[\s\S]*\}/);if(!m)return null;
+      const out=JSON.parse(m[0]);countUse('gemini');countTok('gemini',(j.usageMetadata&&j.usageMetadata.totalTokenCount)||0);$('geminiNote').textContent=`Gemini (${model}) is helping check calls.`;return out&&typeof out.text==='string'?out:null;
+    }
+    return null;
   }catch(e){$('geminiNote').textContent='Gemini check failed: '+e.message;return null}
 }
 async function aiCheck(entry){
@@ -1089,7 +1097,7 @@ async function aiCheck(entry){
   {const c=await claudeCheck(AI_SYS,user);if(c){entry.aiModel='claude';return c}}
   const need=Math.ceil((AI_SYS.length+user.length)/3.6)+450;
   for(let i=0;i<AI_MODELS.length;i++){const model=AI_MODELS[i];
-    if(i===1&&store.get('geminiKey','')){const g=await geminiCheck(AI_SYS,user);if(g){entry.aiModel='gemini';return g}} // free Gemini before the weaker Groq backups
+    if(i===1&&geminiKey()){const g=await geminiCheck(AI_SYS,user);if(g){entry.aiModel='gemini';return g}} // free Gemini before the weaker Groq backups
     if(Date.now()<(aiLimitedUntil[model]||0))continue;
     // the best model is worth a short wait if it's only busy for a moment
     if(i===0&&aiTokens(model)+need>7600){const oldest=(aiTokLog[model]||[])[0];const wait=oldest?60e3-(Date.now()-oldest[0]):0;if(wait>0&&wait<3500)await sleep(wait+100);else continue}
@@ -1897,7 +1905,7 @@ const used=kind=>store.get('use_'+kind,[]).filter(t=>Date.now()-t<864e5).length;
 function countTok(model,n){const k='tok_'+model,now=Date.now();const a=store.get(k,[]).filter(x=>now-x[0]<864e5);a.push([now,n|0]);store.set(k,a.slice(-3000))}
 const usedTok=model=>store.get('tok_'+model,[]).filter(x=>Date.now()-x[0]<864e5).reduce((s,x)=>s+x[1],0);
 // what Groq said about the whole key when it hit a limit ("Limit 200000, Used 198641")
-function noteKeyLimit(model,msg){const m=String(msg).match(/(tokens|requests) per day[^:]*:\s*Limit (\d+), Used (\d+)/i);if(m){const k=store.get('keyLimits',{});k[model]={what:m[1].toLowerCase(),limit:+m[2],used:+m[3],at:Date.now()};store.set('keyLimits',k)}}
+function noteKeyLimit(model,msg){const m=String(msg).match(/(tokens|requests) per day[^:]*:\s*Limit (\d+), Used (\d+)/i);if(m){const k=store.get('keyLimits',{});k[model]={what:m[1].toLowerCase(),limit:+m[2],used:+m[3],at:Date.now(),key:ownKey('groq')?'own':'shared'};store.set('keyLimits',k)}}
 const groqLimited={};
 const groqModel=()=>Date.now()<(groqLimited['whisper-large-v3']||0)?'whisper-large-v3-turbo':'whisper-large-v3';
 const PROVIDERS={
@@ -2304,17 +2312,18 @@ function paintEngine(){
 }
 // Free Groq plan daily limits for each model the site uses
 const GROQ_FREE={'whisper-large-v3':{n:2000,u:'requests',label:'Transcription (Whisper Large v3)'},'whisper-large-v3-turbo':{n:2000,u:'requests',label:'Second hearing (Whisper Turbo)'},
-  'openai/gpt-oss-120b':{n:200000,u:'tokens',label:'Address & word check (GPT-OSS 120B)'},'qwen/qwen3.8-27b':{n:1000,u:'requests',label:'Backup check (Qwen 3.8)'},'openai/gpt-oss-20b':{n:200000,u:'tokens',label:'Backup check (GPT-OSS 20B)'}};
+  'openai/gpt-oss-120b':{n:200000,u:'tokens',label:'Address & word check (GPT-OSS 120B)'},'qwen/qwen3.8-27b':{n:200000,u:'tokens',label:'Backup check (Qwen 3.8)'},'openai/gpt-oss-20b':{n:200000,u:'tokens',label:'Backup check (GPT-OSS 20B)'}};
 function paintUsage(){
   const own=!!ownKey('groq'),keyLim=store.get('keyLimits',{}),rows=[];
   for(const[model,L]of Object.entries(GROQ_FREE)){
-    const mine=L.u==='tokens'?usedTok(model):(model.startsWith('whisper')?used('stt:'+model):used('ai:'+model));
-    const kl=keyLim[model]&&Date.now()-keyLim[model].at<864e5?keyLim[model]:null,pct=Math.min(100,Math.round(mine/L.n*100));
-    rows.push(`<div class="urow"><div class="ul"><span>${L.label}</span><b>${mine.toLocaleString()} / ${L.n.toLocaleString()} ${L.u} · ${pct}%</b></div><div class="ubar"><i style="width:${Math.max(pct,mine?2:0)}%"></i>${kl?`<i class="k" style="width:${Math.min(100,Math.round(kl.used/kl.limit*100))}%"></i>`:''}</div>${kl?`<div class="uk">Whole key: ${kl.used.toLocaleString()} / ${kl.limit.toLocaleString()} ${kl.what} (${Math.round(kl.used/kl.limit*100)}%) as of ${fmtTime(new Date(kl.at)).slice(0,5)}</div>`:''}</div>`);
+    const mine=L.u==='tokens'?usedTok(model):used('stt:'+model);
+    // what Groq last said about the whole key (all browsers); it's a rolling 24-hour total, so it's only shown for 3 hours
+    const kl=keyLim[model]&&Date.now()-keyLim[model].at<3*36e5&&keyLim[model].key===(own?'own':'shared')&&keyLim[model].what===L.u?keyLim[model]:null;
+    const shown=kl?Math.max(kl.used,mine):mine,pct=Math.min(100,Math.round(shown/L.n*100)),full=pct>=95;
+    rows.push(`<div class="urow"><div class="ul"><span>${L.label}</span><b>${shown.toLocaleString()} / ${L.n.toLocaleString()} ${L.u} · ${pct}%</b></div><div class="ubar"><i class="${full?'k':''}" style="width:${Math.max(pct,shown?2:0)}%"></i></div>${kl?`<div class="uk">${full?'Used up for now: ':''}whole key as Groq reported at ${fmtTime(new Date(kl.at)).slice(0,5)} · this browser used ${mine.toLocaleString()}</div>`:''}</div>`);
   }
   const c=used('claude'),gm=used('gemini'),allChecks=used('ai')+gm;
-  rows.push(`<div class="uk" style="color:var(--muted)">AI checks from this browser today, all models: <b style="color:var(--text)">${allChecks.toLocaleString()}</b> (the per-model bars above only count checks since Oct 5, 12:05 AM)</div>`);
-  $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}${gm?`<div class="uk" style="margin-top:6px">Gemini checks today: ${gm.toLocaleString()}</div>`:''}${c?`<div class="uk" style="margin-top:6px">Claude checks today: ${c.toLocaleString()}</div>`:''}<div class="mnote">Bars show this browser's use over the last 24 hours. ${own?'You\'re using your own key.':'The shared key is used by everyone on the site, so the whole key can run out sooner; when Groq reports the whole key\'s total, it appears under the bar.'}</div>`;
+  $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}<div class="uk" style="color:var(--muted);margin-top:8px">Checks from this browser today: <b style="color:var(--text)">${allChecks.toLocaleString()}</b>${gm?` (Gemini: ${gm.toLocaleString()})`:''}${c?` · Claude: ${c.toLocaleString()}`:''}</div><div class="mnote">Bars show this browser's use over the last 24 hours, or the whole key's total when Groq has reported it. ${own?'You\'re using your own Groq key.':'The shared key is used by everyone on the site.'}</div>`;
 }
 function openSettings(){paintEngine();paintUsage();$('settingsDlg').showModal()}
 function openSetup(){if(!$('setupDlg').open)$('setupDlg').showModal();setTimeout(()=>$('setupKey').focus(),100)}
@@ -2332,8 +2341,8 @@ $('engine').onchange=()=>{const v=$('engine').value;store.set('engine',v);cloudB
   else{if(worker){worker.terminate();worker=null;modelReady=false}if(sttKey(v))aiStatus('READY · '+PROVIDERS[v].name.split(' ·')[0]);else aiStatus('NEEDS KEY')}
   paintEngine();pump()};
 function paintGemini(){const has=!!store.get('geminiKey','');$('geminiKey').value='';$('geminiRemove').style.display=has?'':'none';
-  $('geminiNote').textContent=has?'Gemini takes over the checks when Groq\'s best model is busy or used up for the day.':'Free: get a key at aistudio.google.com (no card). Gemini then takes over the checks when Groq\'s best model is used up for the day, instead of the weaker backups. On Google\'s free tier, what\'s sent may be used to improve their models.'}
-$('geminiSave').onclick=async()=>{const v=$('geminiKey').value.trim();if(!/^AI[A-Za-z0-9_-]{20,}$/.test(v)){$('geminiNote').textContent='That doesn\'t look like a Gemini API key (they start with AI).';return}
+  $('geminiNote').textContent=has?'Your own Gemini key takes over the checks when Groq\'s best model is busy or used up for the day.':SHARED_GEMINI?'Using the site\'s built-in Gemini key: Gemini takes over the checks when Groq\'s best model is used up for the day. Add your own free key from aistudio.google.com if it runs out.':'Free: get a key at aistudio.google.com (no card). Gemini then takes over the checks when Groq\'s best model is used up for the day, instead of the weaker backups. On Google\'s free tier, what\'s sent may be used to improve their models.'}
+$('geminiSave').onclick=async()=>{const v=$('geminiKey').value.trim();if(!/^(AI|AQ\.)[A-Za-z0-9_.-]{20,}$/.test(v)){$('geminiNote').textContent='That doesn\'t look like a Gemini API key.';return}
   $('geminiNote').textContent='Checking the key…';geminiModel=null;try{const m=await pickGeminiModel(v);store.set('geminiKey',v);paintGemini();$('geminiNote').textContent=`Key works. Gemini (${m}) will take over when Groq's best model is used up.`}catch(e){geminiModel=null;$('geminiNote').textContent='Gemini didn\'t accept the key: '+e.message}};
 $('geminiRemove').onclick=()=>{store.del('geminiKey');geminiModel=null;paintGemini()};
 paintGemini();
