@@ -1021,7 +1021,7 @@ function candidateStreets(text){
   return[...new Set(roads),...[...new Set(out)].slice(0,24).map(nm=>`${nm} (${streetTown(nm)})`)];
 }
 function recentCalls(entry){
-  const now=Date.now();return lines.filter(l=>l!==entry&&l.final&&now-l.time<20*60e3).slice(-8).map(l=>`[${fmtTime(l.time).slice(0,5)}${l.inc?' incident '+l.inc.id+(l.inc.status==='resolved'?' (resolved)':''):''}] ${l.text}${l.inc?' → '+l.inc.label:''}`);
+  const now=Date.now();return lines.filter(l=>l!==entry&&l.final&&now-l.time<20*60e3).slice(-5).map(l=>`[${fmtTime(l.time).slice(0,5)}${l.inc?' incident '+l.inc.id+(l.inc.status==='resolved'?' (resolved)':''):''}] ${l.text}${l.inc?' → '+l.inc.label:''}`);
 }
 // Tokens each Groq model used in the last minute (free plan: 8,000 per minute per model)
 const aiTokLog={};
@@ -1034,7 +1034,7 @@ async function claudeCheck(sys,user){
     const j=await r.json();
     if(!r.ok){$('claudeNote').textContent='Claude check failed: '+(j.error&&j.error.message||r.status);return null}
     const m=(j.content&&j.content[0]&&j.content[0].text||'').match(/\{[\s\S]*\}/);if(!m)return null;
-    const out=JSON.parse(m[0]);$('claudeNote').textContent='Claude is checking calls.';countUse('claude');return out&&typeof out.text==='string'?out:null;
+    const out=JSON.parse(m[0]);$('claudeNote').textContent='Claude is checking calls.';countUse('claude');return out&&typeof out.text==='string'?{...out,_model:'claude'}:null;
   }catch(e){$('claudeNote').textContent='Claude check failed: '+e.message;return null}
 }
 async function aiCheck(entry){
@@ -1042,8 +1042,8 @@ async function aiCheck(entry){
   const recent=recentCalls(entry);
   for(const r of recent){const m=r.match(/→ (.+)$/);if(m)for(const part of m[1].split(' & '))if(SD.byName.has(part.replace(/^\d+ /,'')))cands.push(`${part.replace(/^\d+ /,'')} (${streetTown(part.replace(/^\d+ /,''))})`)}
   if(entry.alt)cands.push(...candidateStreets(entry.alt));
-  const user=JSON.stringify({transcript:entry.text,...(entry.alt?{second_hearing:entry.alt}:{}),unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)].slice(0,24)});
-  {const c=await claudeCheck(AI_SYS,user);if(c)return c}
+  const user=JSON.stringify({transcript:entry.text,...(entry.alt?{second_hearing:entry.alt}:{}),unsure_words:[...(entry.unc||[])],recent_calls:recent,candidate_streets:[...new Set(cands)].slice(0,16)});
+  {const c=await claudeCheck(AI_SYS,user);if(c){entry.aiModel='claude';return c}}
   const need=Math.ceil((AI_SYS.length+user.length)/3.6)+450;
   for(let i=0;i<AI_MODELS.length;i++){const model=AI_MODELS[i];
     if(Date.now()<(aiLimitedUntil[model]||0))continue;
@@ -1054,7 +1054,11 @@ async function aiCheck(entry){
       try{
         const r=await groqFetch('/openai/v1/chat/completions',{method:'POST',signal:timeoutSignal(8000),headers:{'Content-Type':'application/json'},
           body:JSON.stringify({model,messages:[{role:'system',content:AI_SYS},{role:'user',content:user}],response_format:{type:'json_object'},temperature:0,max_completion_tokens:700,...(model.startsWith('openai/')?{reasoning_effort:'low'}:{})})});
-        if(r.status===429){if(i===0&&attempt===0){await sleep(2500);continue}aiLimitedUntil[model]=Date.now()+1000*(+r.headers.get('retry-after')||20);break}
+        if(r.status===429){let msg='';try{msg=(await r.json()).error.message||''}catch{}
+          const m=msg.match(/try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)?s?/i),wait=m?((+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0))*1000:0;
+          if(/per day|TPD|RPD/i.test(msg)){aiLimitedUntil[model]=Date.now()+Math.max(wait,5*60e3);break} // used up for today: don't keep asking
+          if(i===0&&attempt===0&&(!wait||wait<4000)){await sleep(wait||2500);continue}
+          aiLimitedUntil[model]=Date.now()+Math.max(wait,20e3);break}
         if(!r.ok)break;countUse('ai');
         const j=await r.json();(aiTokLog[model]=aiTokLog[model]||[]).push([Date.now(),(j.usage&&j.usage.total_tokens)||need]);
         const out=JSON.parse(j.choices[0].message.content);
@@ -1066,6 +1070,18 @@ async function aiCheck(entry){
   return null;
 }
 // the check may correct words, never drop them
+// The best check model (or Claude) may correct any word. A backup model, used when the best one is busy or out for the day,
+// may only change words that were in doubt (unclear, or heard differently the second time) or turn them into real local names.
+const FILLER=new Set("a an the and of to uh um i i'll ill will be is are was it it's its that this he she they we you".split(' '));
+function trustedFix(entry,t){
+  if(!entry.aiModel||entry.aiModel===AI_MODELS[0]||entry.aiModel==='claude')return true;
+  const doubt=new Set([...(entry.unc||[])].map(w=>String(w).toLowerCase()));
+  const local=w=>streetIndex.has(w)||!!TOWNS[w]||!!SUFFIX[w]||LANDMARKS.some(l=>l.name.toLowerCase().split(/\W+/).includes(w))||(/^\d/.test(w)&&!!(CODES[w]||CODES[w.replace(/^(1[01])(\d)/,'$1-$2')]));
+  const A=wordsOf(entry.text),B=wordsOf(t),pool=[...B],removed=[];
+  for(const w of A){const k=pool.indexOf(w);if(k>=0)pool.splice(k,1);else removed.push(w)}
+  const added=pool.filter(w=>!FILLER.has(w));
+  return removed.filter(w=>!FILLER.has(w)).every(w=>doubt.has(w))||added.every(local);
+}
 // words of hearing A that hearing B didn't hear (ignoring case, punctuation and how numbers are written)
 function hearingDiff(a,b){
   const norm=t=>wordsOf(String(t).replace(/(\d)-(\d)/g,'$1$2')).map(w=>w.replace(/-/g,'')),A=norm(a),B=norm(b),pool=[...B],out=[];
@@ -1526,7 +1542,7 @@ async function prepare(entry,merged,info={}){
   if(info.morse){const m=info.morse;Object.assign(entry,{text:m.text,morse:{pattern:m.pattern,wpm:m.wpm||0,hz:m.hz||0},fixes:[],unc:new Set(),results:[],hits:[],kinds:['MORSE CODE'],locs:[],geo:null,aiChecked:false,
     check:'✓ MORSE DECODED',checkNote:m.hz?`Decoded from a ${m.hz} Hz tone at about ${m.wpm} words per minute. Radio repeaters send their FCC call sign this way.`:'Dots and dashes in the transcript, decoded'});return}
   entry.inherited=false;entry.inheritedFrom=null; // a fresh hearing decides its own type first
-  entry.alt=info.alt||null;
+  entry.alt=info.alt||null;entry.aiModel=null;
   {const d=callDetails(merged.text);entry.plate=d.plate;entry.plateSpan=d.span;entry.vehicle=d.vehicle;entry.complaint=d.complaint}
   const snapped=snapNames(codeFix(merged.text));if(snapped.text!==merged.text)snapped.fixes=wordFixes(merged.text,snapped.text).concat(snapped.fixes.filter(f=>!wordFixes(merged.text,snapped.text).some(g=>g.to===f.to)));
   Object.assign(entry,{text:snapped.text,fixes:snapped.fixes,unc:merged.unc,primed:info.primed,plain:info.plain,results:[],hits:[],kinds:[],locs:[]});
@@ -1545,16 +1561,16 @@ async function prepare(entry,merged,info={}){
   for(const loc of locs.slice(0,2)){const g=await geocode(town?loc:{...loc,_carried:true},ctxTown);if(g&&(inCountyPt(g.lat,g.lon)||(loc.type==='address'&&inRegion(g.lat,g.lon)))){entry.geo={loc,g};break}}
   {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||venueBeats(l,entry.geo))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
   // 2) AI check unless the local result is already solid (saves your free AI allowance)
-  const solid=!entry.complaint&&!entry.plate&&!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
+  const solid=!entry.plate&&!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
   if(!solid&&!info.partial&&!info.typed&&aiOn()&&SD.ready&&needsCheck(entry.text,entry.unc)){
     const ai=await aiCheck(entry);
     if(ai){
       const t=ai.text.trim(),ratio=t.length/Math.max(1,entry.text.length);
       const sameWords=wordsOf(t).join(' ')===wordsOf(entry.text).join(' '); // punctuation-only change: keep the original
-      if(t&&!sameWords&&ratio>0.6&&ratio<1.6&&t!==entry.text&&(keepsAllWords(entry.text,t)||(entry.alt&&keepsAllWords(entry.alt,t)))){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t));entry.text=t;entry.unc=new Set()}
+      if(t&&!sameWords&&ratio>0.6&&ratio<1.6&&t!==entry.text&&(keepsAllWords(entry.text,t)||(entry.alt&&keepsAllWords(entry.alt,t)))&&trustedFix(entry,t)){entry.fixes=entry.fixes.concat(wordFixes(entry.text,t));entry.text=t;entry.unc=new Set()}
       entry.sameAs=ai.same_incident||null;entry.resolves=ai.resolves||null;
       {const pl=normPlate(ai.plate);if(pl)entry.plate=pl;if(ai.vehicle&&String(ai.vehicle).length<40)entry.vehicle=String(ai.vehicle);if(ai.complaint&&String(ai.complaint).length<60)entry.complaint=String(ai.complaint)}
-      entry.aiChecked=true;entry.check='✓ AI CHECKED';entry.checkNote='Transcript and location checked against recent calls and the county street list'+(ai.confidence?` (${ai.confidence} confidence)`:'');
+      entry.aiChecked=true;entry.check='✓ AI CHECKED';entry.checkNote='Transcript and location checked against recent calls and the county street list'+(ai.confidence?` (${ai.confidence} confidence)`:'')+(entry.aiModel&&entry.aiModel!==AI_MODELS[0]&&entry.aiModel!=='claude'?'. Checked by a backup model, so only unclear words were changed.':'');
       {const said=extract(entry.text).town;if(said&&ai.location&&(ai.location.street||ai.location.place)&&String(ai.location.town||'').toLowerCase()!==townName(said).toLowerCase())ai.location.town=townName(said)}
       if(ai.location&&ai.location.number&&ai.location.street)ai.location.number=houseNumberFix(entry.text,String(ai.location.number),String(ai.location.street));
       let r=await resolveAIWords(ai.location,entry.text);
