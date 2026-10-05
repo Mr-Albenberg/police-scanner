@@ -178,6 +178,10 @@
     #legend{display:flex;flex-wrap:wrap;gap:5px 12px;padding:8px 14px 10px;border-top:1px solid var(--line2);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.03em}
     #legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px}
     #feed.collapsed #legend{display:none}
+    .tag.loc .xs{color:#9fb6c4;font-weight:650}
+    .urow{margin:7px 0}.ul{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}.ul b{color:var(--text);font-weight:750;white-space:nowrap}
+    .ubar{position:relative;height:6px;border-radius:3px;background:#12293a;margin-top:4px;overflow:hidden}.ubar i{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:3px}.ubar i.k{background:#ff864e88}
+    .uk{font-size:11px;color:#ffb48f;margin-top:3px}
     .tag.fixd{background:#2a1f08;border-color:#a8822e;color:#ffe2a6;cursor:help}
     .tag.plate{background:#f2f4f0;border-color:#c9d2cc;color:#1b2a6b;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}
     .tag.plate b{color:#1b2a6b;font-weight:900;letter-spacing:.12em;margin-right:4px}
@@ -478,6 +482,7 @@ const NOT_CODE_BEFORE=/\b(room|rm|bed|beds|suite|ste|apartment|apt|unit|space|ga
 function codesIn(text,locWords){
   const out=[],seen=new Set(),lw=new Set((locWords||[]).map(String));
   const add=(key,str,at,num)=>{const c=CODES[key];if(!c||seen.has(key))return;
+    if(/^1[01]-/.test(key)&&new RegExp('^(?:,?\\s*'+str.replace(/[-]/g,'\\-')+')*,?\\s+'+ADDR_TAIL,'i').test(text.slice(at+str.length,at+str.length+60)))return;
     if(num){if(lw.has(str.replace(/[^0-9a-z.]/gi,'').toLowerCase()))return;if(NOT_CODE_BEFORE.test(text.slice(Math.max(0,at-14),at)))return;
       const after=text.slice(at+str.length,at+str.length+24);if(/^\s+(block|hundred|feet|ft|miles?|minutes?|seconds?|years?|pounds?|degrees|mph|[a-z]+\s+(street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|boulevard|blvd|place|circle)\b)/i.test(after))return}
     seen.add(key);out.push({key,text:str,meaning:c[0],type:c[1],src:CODE_SRC[c[2]],at})};
@@ -906,7 +911,8 @@ function snapNames(text){
   out=out.replace(/\b(UNIX|Unix|unix|Unis|unis|Eunice|eunice)\b/g,'units');
   // radio codes: "10 4" -> 10-4, "1183 at ..." -> 11-83 (unless it's a house number)
   out=out.replace(/\b(10|11) (\d{1,2})\b(?! ?(block|hundred))/g,'$1-$2');
-  out=out.replace(/\b(1[01])(\d{2})\b/g,(m,a,b,offset)=>{const rest=tokenize(out.slice(offset+m.length));let j=0;if(rest[j]==='block'){j++;if(rest[j]==='of')j++}const s=matchStreetAt(rest,j);if(s&&!(['and','at'].includes(rest[j+s.len])&&matchStreetAt(rest,j+s.len+1)))return m;return a+'-'+b});
+  out=out.replace(/\b(1[01])(\d{2})\b/g,(m,a,b,offset)=>{if(new RegExp('^(?:,?\\s*'+m+')*,?\\s+'+ADDR_TAIL,'i').test(out.slice(offset+m.length,offset+m.length+70)))return m; // a house number before a street, even one outside the county map
+    const rest=tokenize(out.slice(offset+m.length));let j=0;if(rest[j]==='block'){j++;if(rest[j]==='of')j++}const s=matchStreetAt(rest,j);if(s&&!(['and','at'].includes(rest[j+s.len])&&matchStreetAt(rest,j+s.len+1)))return m;return a+'-'+b});
   return{text:out,fixes};
 }
 function displayBase(b){const nm=streetIndex.get(b)||b;const t=nm.split(' ');let i=0,j=t.length;while(j-i>1&&DIRS[t[i].toLowerCase()])i++;while(j-i>1&&SUFFIX[t[j-1].toLowerCase()]===1)j--;return t.slice(i,j).join(' ')}
@@ -985,6 +991,9 @@ Rules:
 - Unit call signs are not addresses: a number with a phonetic word like "23 Adam", "Adam 6-2", "3 Lincoln 12", "Paul 7", "Mary 40", "Sam 2" names a patrol unit.
 - Radio and penal codes (10-4, 10-15, 10-97, 11-82, 11-83, 415, 459, 5150) are not house numbers. "Code 2", "Code 3", "Code 4" are often misheard (e.g. "go to you" at the start of a call is usually "Code 2").
 - House numbers come before the street ("1424 Osage"). A short number said after a street or at the end ("Osage 97", "show me 97") is usually a 10-code said without the "10" (97 = on scene, 98 = finished), not a house number.
+- A code-looking number said right before a street is a house number: "10-95, 10-95, West McCoy Lane" = 1095 West McCoy Lane.
+- "cross of A and B" gives the cross streets of the address before it.
+- Calls can come from Santa Maria and other nearby cities; real addresses there are fine even when no candidate street matches.
 - Numbers after room, bed, suite, apartment, space or gate are inside a building: never a highway or house number ("room 101" is not US 101).
 - Hospitals are named by short names: "French" = French Hospital, "Sierra" or "Sierra Vista" = Sierra Vista Hospital, "Twin" or "Twin Cities" = Twin Cities Hospital, "Marian" = Marian Hospital (Santa Maria), "AG hospital" = Arroyo Grande Hospital. For a patient move ("going to French, room 101, bed 2"), the location is the destination hospital: put it in "place".
 - "street" and "cross" should be copied exactly from the candidate street list. Highways can be given as "US 101", "CA 1", "CA 46", etc.
@@ -1061,11 +1070,12 @@ async function aiCheck(entry){
           body:JSON.stringify({model,messages:[{role:'system',content:AI_SYS},{role:'user',content:user}],response_format:{type:'json_object'},temperature:0,max_completion_tokens:700,...(model.startsWith('openai/')?{reasoning_effort:'low'}:{})})});
         if(r.status===429){let msg='';try{msg=(await r.json()).error.message||''}catch{}
           const m=msg.match(/try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)?s?/i),wait=m?((+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0))*1000:0;
+          noteKeyLimit(model,msg);
           if(/per day|TPD|RPD/i.test(msg)){aiLimitedUntil[model]=Date.now()+Math.max(wait,5*60e3);break} // used up for today: don't keep asking
           if(i===0&&attempt===0&&(!wait||wait<4000)){await sleep(wait||2500);continue}
           aiLimitedUntil[model]=Date.now()+Math.max(wait,20e3);break}
-        if(!r.ok)break;countUse('ai');
-        const j=await r.json();(aiTokLog[model]=aiTokLog[model]||[]).push([Date.now(),(j.usage&&j.usage.total_tokens)||need]);
+        if(!r.ok)break;countUse('ai');countUse('ai:'+model);
+        const j=await r.json();(aiTokLog[model]=aiTokLog[model]||[]).push([Date.now(),(j.usage&&j.usage.total_tokens)||need]);countTok(model,(j.usage&&j.usage.total_tokens)||need);
         const out=JSON.parse(j.choices[0].message.content);
         if(out&&typeof out.text==='string'){entry.aiModel=model;return out}
         break;
@@ -1501,7 +1511,7 @@ function drawLine(entry){
   el.style.setProperty('--tbar',barBg(resolved?[RESOLVED_COLOR]:svcColors(servicesOf(entry))));
   for(const k of entry.kinds.slice(0,2))tags.push(`<span class="tag type${entry.inherited?' inh':''}" style="--tc:${typeColor(k)}" title="${esc((serviceOf(k)?SERVICES[serviceOf(k)].label+' call':'Call type')+(entry.inherited?`. No type was said in this transmission, so it's carried over from the ${fmtTime(entry.inheritedAt).slice(0,5)} call in the same conversation.`:''))}">${esc(k)}${entry.inherited?' ↺':''}</span>`);
   if(entry.toned)tags.push('<span class="tag tone" title="Dispatch alert tones were heard right before this call. Fire and medical calls are sent with tones.">ALERT TONES</span>');
-  if(entry.results.length){const r=entry.results[0];tags.push(`<span class="tag loc">📍 ${esc(r.label)}${r.precise?'':' ≈'}</span>`)}
+  if(entry.results.length){const r=entry.results[0],xs=(entry.cross||[]).filter(c=>!r.label.toLowerCase().includes(c.toLowerCase()));tags.push(`<span class="tag loc">📍 ${esc(r.label)}${r.precise?'':' ≈'}${xs.length?`<span class="xs"> · cross ${esc(xs.join(' & '))}</span>`:''}</span>`)}
   if(entry.addrCheck&&entry.results.length)tags.push(entry.addrCheck.fixed?`<span class="tag fixd" title="${esc(entry.addrCheck.note)}">ADDRESS CORRECTED</span>`:entry.addrCheck.ok?`<span class="tag chk" title="${esc(entry.addrCheck.note)}">✓ ADDRESS VERIFIED</span>`:'');
   if(entry.plate)tags.push(`<span class="tag plate" title="License plate read on the radio${entry.vehicle?': '+esc(entry.vehicle):''}"><b>${esc(entry.plate)}</b>${entry.vehicle?' '+esc(entry.vehicle):''}</span>`);
   else if(entry.vehicle&&!entry.morse)tags.push(`<span class="tag veh">${esc(entry.vehicle)}</span>`);
@@ -1543,7 +1553,11 @@ function callDetails(text){
   if(c)out.complaint=c[1].split(/\s+(?:and the|and he|and she|and they|but|who|which|while|so)\s+|,\s*/i)[0].split(/\s+/).slice(0,6).join(' ').replace(/[,\s]+$/,'');
   return out;
 }
-function codeFix(t){return t.replace(/^(\s*)go to you\b/i,'$1Code 2').replace(/\bcode[- ](two|too|to)\b/gi,'Code 2').replace(/\bcode[- ](three|tree)\b/gi,'Code 3').replace(/\bcode[- ](four|for)\b(?!\s+(the|a|an|him|her|them|us|me)\b)/gi,'Code 4').replace(/\bcode[- ]one\b/gi,'Code 1')}
+const ADDR_TAIL=String.raw`(?:north|south|east|west|n|s|e|w)?\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|place|pl|boulevard|blvd|circle|cir|terrace|trail|loop|parkway|pkwy)\b`;
+function codeFix(t){
+  // a code-looking number said right before a street is a house number ("10-95, 10-95, West McCoy Lane" = 1095)
+  t=t.replace(new RegExp(String.raw`\b(1[01])-(\d{2})((?:,?\s*\1-\2)*,?\s+)(?=${ADDR_TAIL})`,'gi'),(m,a,b,rest)=>a+b+rest.replace(new RegExp(a+'-'+b,'g'),a+b));
+  return t.replace(/^(\s*)go to you\b/i,'$1Code 2').replace(/\bcode[- ](two|too|to)\b/gi,'Code 2').replace(/\bcode[- ](three|tree)\b/gi,'Code 3').replace(/\bcode[- ](four|for)\b(?!\s+(the|a|an|him|her|them|us|me)\b)/gi,'Code 4').replace(/\bcode[- ]one\b/gi,'Code 1')}
 async function prepare(entry,merged,info={}){
   if(info.morse){const m=info.morse;Object.assign(entry,{text:m.text,morse:{pattern:m.pattern,wpm:m.wpm||0,hz:m.hz||0},fixes:[],unc:new Set(),results:[],hits:[],kinds:['MORSE CODE'],locs:[],geo:null,aiChecked:false,
     check:'✓ MORSE DECODED',checkNote:m.hz?`Decoded from a ${m.hz} Hz tone at about ${m.wpm} words per minute. Radio repeaters send their FCC call sign this way.`:'Dots and dashes in the transcript, decoded'});return}
@@ -1566,6 +1580,8 @@ async function prepare(entry,merged,info={}){
   Object.assign(entry,{locs,kinds:kindsOf(entry.text,locs.flatMap(l=>l.words||[])),hits:watchMatches(entry.text)});
   for(const loc of locs.slice(0,2)){const g=await geocode(town?loc:{...loc,_carried:true},ctxTown);if(g&&(inCountyPt(g.lat,g.lon)||(loc.type==='address'&&inRegion(g.lat,g.lon)))){entry.geo={loc,g};break}}
   {const l=landmarkIn(entry.text);if(l&&(weakGeo(entry.geo)||venueBeats(l,entry.geo))){entry.geo=landmarkGeo(l,entry.text);entry.locs=[entry.geo.loc]}}
+  // 1b) a full street address outside the county map ("1095 McCoy Lane" in Santa Maria): look it up directly
+  if(!info.partial&&(!entry.geo||!entry.geo.g.house)){const ra=await regionalAddress(entry);if(ra){entry.geo=ra;entry.locs=[ra.loc]}}
   // 2) AI check unless the local result is already solid (saves your free AI allowance)
   const solid=!entry.plate&&!RESOLVE.test(entry.text)&&entry.geo&&entry.geo.g.precise&&entry.geo.loc.type!=='street'&&!(entry.unc&&entry.unc.size)&&!FOLLOWUP.test(entry.text)&&inCountyPt(entry.geo.g.lat,entry.geo.g.lon)&&!/\b(highway|hwy|101|freeway|overcrossing|overpass|on-?ramp|off-?ramp)\b/i.test(entry.text);
   const claudeAll=!!store.get('anthropicKey','')&&wordsOf(entry.text).length>=3; // with your own Claude key, every call is double-checked
@@ -1583,6 +1599,7 @@ async function prepare(entry,merged,info={}){
       let r=await resolveAIWords(ai.location,entry.text);
       if(r&&r.loc.s&&!placedStreet(entry.text,ai.location.street))r=null;
       if(r&&r.loc.weak&&entry.geo){r=entry.geo;r._kept=true}
+      if(r&&entry.geo&&entry.geo.g.house&&!r.g.house&&r!==entry.geo){r=entry.geo;r._kept=true} // a confirmed house address beats a vaguer reading
       // the check named the same street but dropped the house number: keep the fuller local reading
       if(r&&entry.geo&&entry.geo.loc.type==='address'&&!ai.location.number&&!ai.location.cross&&ai.location.street&&entry.geo.loc.s&&baseOf(String(ai.location.street))===entry.geo.loc.s.base){r=entry.geo;r._kept=true} // the check named two streets that don't cross; keep what was clearly said
       // "3 Lincoln 12" is a unit call sign, not Lincoln Street
@@ -1597,6 +1614,8 @@ async function prepare(entry,merged,info={}){
     }
   }  // 3) still nothing: a numbered address on a misheard out-of-county road ("9000 Fairlane Highway" → 9000 Airline Highway)
   if(!entry.geo&&!info.partial&&SD.ready){const r=await regionalFallback(entry);if(r){entry.geo=r;entry.locs=[r.loc]}}
+  entry.cross=entry.geo?crossRaw(entry.text):[];
+  if(entry.cross.length&&entry.locs[0]){const w=entry.cross.flatMap(c=>wordsOf(c));entry.locs[0]={...entry.locs[0],words:[...new Set([...(entry.locs[0].words||[]),...w])]}}
   entry.toned=!!info.toned||!!entry.toned;if(entry.toned)entry.kinds=tonedKinds(entry.kinds);
 }
 // The check named a street the transcript misheard ("Fairlane" for Airline): fix that word in the text so it reads and highlights right
@@ -1627,6 +1646,11 @@ function placedStreet(text,street){
    A street address is trusted only if the house number really exists on that street, and (when the call names cross
    streets, "crossing Cascabel or San Gabriel") the street actually meets one of them. Otherwise the nearby streets that do
    are tried, and an earlier call with the same house number is used. */
+// the cross streets as said ("cross of Rolling Green and Meredith Lane"), for the label and highlighting
+function crossRaw(text){
+  const m=text.match(/\b(?:crossing|cross(?:\s+streets?)?(?:\s+(?:is|are|of))?|between)\s+([^.;,]+)/i);if(!m)return[];
+  return m[1].split(/\s*(?:\bor\b|\band\b|&|\/)\s*/).map(x=>x.trim()).filter(x=>/^[A-Za-z]/.test(x)&&x.split(/\s+/).length<=4).slice(0,3).map(titleCase);
+}
 function crossNamesIn(text){
   const m=text.match(/\b(?:crossing|cross streets?(?:\s+(?:is|are|of))?|cross of|between)\s+([^.;]+)/i);if(!m)return[];
   const out=[];for(const piece of m[1].split(/\s*(?:,|\bor\b|\band\b|\/)\s*/)){const tok=tokenize(piece);for(let i=0;i<Math.min(tok.length,2);i++){const ms=matchStreetAt(tok,i);if(ms){out.push({base:ms.base,canon:ms.canon,names:ms.names||undefined});break}}}
@@ -1653,7 +1677,7 @@ async function houseLookup(num,name){ // does this house number exist on this st
 async function verifyAddress(entry){
   const geo=entry.geo;if(!geo||!SD.ready||entry.morse)return false;
   const label=String(geo.g.label||geo.loc.label||''),m=label.match(/^(\d{2,6})\s+([^,]+)/);if(!m)return false;
-  const num=m[1],street=m[2].trim(),crosses=crossNamesIn(entry.text);
+  const num=m[1],street=m[2].trim(),crosses=inCountyPt(geo.g.lat,geo.g.lon)?crossNamesIn(entry.text):[]; // the county map can't judge cross streets in other counties
   const meets=crosses.length?crosses.some(c=>distToStreet(c,geo.g.lat,geo.g.lon)<900):true;
   if(geo.g.house&&meets){entry.addrCheck={ok:true,note:`${num} ${street} was found, and it ${crosses.length?'is near the cross street given':'exists as a real address'}.`};return false}
   const adopt=(g,why)=>{entry.geo={loc:{...geo.loc,label:g.label,type:geo.loc.type},g:{...g,label:g.label}};entry.addrCheck={ok:true,fixed:true,note:why};return true};
@@ -1665,7 +1689,7 @@ async function verifyAddress(entry){
     const cands=new Map();for(const c of crosses)for(const[nm,pt]of streetsMeeting(c))if(!cands.has(nm))cands.set(nm,pt);
     const ranked=[...cands.keys()].map(nm=>[nm,nameSim(nm,street)]).filter(x=>x[1]>=0.35).sort((a,b)=>b[1]-a[1]).slice(0,3);
     for(const[nm]of ranked){const h=await houseLookup(num,nm);if(h)return adopt(h,`Heard as "${num} ${street}", but that street doesn't meet ${crosses.map(c=>c.canon).join(' or ')}. ${h.label} does, and the house number exists there.`)}
-    if(ranked.length&&!meets){const[nm]=ranked[0],pt=cands.get(nm);return adopt({lat:pt[0],lon:pt[1],precise:false,label:`${num} ${nm} (near ${crosses[0].canon})`},`Heard as "${num} ${street}", which doesn't meet the cross streets. ${nm} does and sounds alike; pinned where they meet.`)}
+    if(ranked.length&&!meets&&!geo.g.house){const[nm]=ranked[0],pt=cands.get(nm);return adopt({lat:pt[0],lon:pt[1],precise:false,label:`${num} ${nm} (near ${crosses[0].canon})`},`Heard as "${num} ${street}", which doesn't meet the cross streets. ${nm} does and sounds alike; pinned where they meet.`)}
   }
   // 3) the house number isn't on record for that street and the street name itself was in doubt: try similar-sounding streets
   //    (many real addresses aren't in the map data, so a clearly heard street is left alone)
@@ -1678,6 +1702,20 @@ async function verifyAddress(entry){
   }
   if(!geo.g.house)entry.addrCheck={ok:false,note:`House number ${num} isn't in the map data for ${street}; the pin is where the map places it.`};
   return false;
+}
+async function regionalAddress(entry){
+  const re=new RegExp(String.raw`\b(\d{2,6})(?:,?\s*\1)*,?\s+((?:north|south|east|west)\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|place|pl|boulevard|blvd|circle|cir|terrace|trail|loop|parkway)\b`,'i');
+  const m=entry.text.match(re);if(!m)return null;
+  const num=m[1],dir=(m[2]||'').trim(),name=m[3],suf=m[4];
+  if(streetIndex.has(baseOf(name+' '+suf)))return null; // a county street: the normal lookup handles it
+  const said=extract(entry.text).town;
+  for(const street of[`${num} ${name} ${suf}`,dir?`${num} ${dir} ${name} ${suf}`:null].filter(Boolean)){
+    try{const p=regionParams({limit:'1',street,state:'California',addressdetails:'1'});if(said)p.city=townName(said);
+      let r=await nominatim('search',p);if(!r.length&&p.city){delete p.city;r=await nominatim('search',p)}
+      const h=r[0];if(h&&String((h.address||{}).house_number||'').replace(/\D/g,'')===num){const lb=`${num} ${(h.address||{}).road||name+' '+titleCase(suf)}${placeOf(h)}`;
+        return{g:{lat:+h.lat,lon:+h.lon,precise:true,house:true,label:lb},loc:{label:lb,type:'address',words:locWordsFor(entry.text,[num,name,suf,dir])}}}}catch{}
+  }
+  return null;
 }
 async function regionalFallback(entry){
   const m=entry.text.match(/\b(\d{2,6})\s+((?:[A-Za-z]+\s+){1,2}?)(highway|road|avenue|street|lane|drive|way|boulevard)\b/i);if(!m)return null;
@@ -1720,7 +1758,7 @@ async function playClip(entry){
 let saveT;
 function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{const now=Date.now();
   const incs=incidents.filter(i=>!i.gone).map(i=>({id:i.id,lat:i.lat,lon:i.lon,precise:i.precise,label:i.label,time:+i.time,lastAt:i.lastAt,status:i.status,resolvedAt:i.resolvedAt,units:[...i.units],line:i.line||null,svcs:incServices(i)}));
-  const ls=lines.filter(l=>!l.partial&&now-l.time<ACTIVE_SHOW).slice(-150).map(l=>({id:l.id,time:+l.time,text:l.text,kinds:l.kinds,check:l.check,checkNote:l.checkNote,fixes:l.fixes,unc:[...(l.unc||[])],locWords:(l.locs||[]).flatMap(x=>x.words||[]),hits:(l.hits||[]).map(h=>({name:h.name,base:h.base})),inc:l.inc&&!l.inc.gone?l.inc.id:null,zone:!!l.zone,clip:!!l.clip,resolvedInc:l.resolvedInc&&!l.resolvedInc.gone?l.resolvedInc.id:null,morse:l.morse||null,toned:!!l.toned,inherited:!!l.inherited,inheritedAt:l.inheritedAt?+l.inheritedAt:0,plate:l.plate||null,vehicle:l.vehicle||null,complaint:l.complaint||null,addrCheck:l.addrCheck||null}));
+  const ls=lines.filter(l=>!l.partial&&now-l.time<ACTIVE_SHOW).slice(-150).map(l=>({id:l.id,time:+l.time,text:l.text,kinds:l.kinds,check:l.check,checkNote:l.checkNote,fixes:l.fixes,unc:[...(l.unc||[])],locWords:(l.locs||[]).flatMap(x=>x.words||[]),hits:(l.hits||[]).map(h=>({name:h.name,base:h.base})),inc:l.inc&&!l.inc.gone?l.inc.id:null,zone:!!l.zone,clip:!!l.clip,resolvedInc:l.resolvedInc&&!l.resolvedInc.gone?l.resolvedInc.id:null,morse:l.morse||null,toned:!!l.toned,inherited:!!l.inherited,inheritedAt:l.inheritedAt?+l.inheritedAt:0,plate:l.plate||null,vehicle:l.vehicle||null,complaint:l.complaint||null,addrCheck:l.addrCheck||null,cross:l.cross||[]}));
   store.set('dw_state',{v:1,saved:now,incs,lines:ls});
 },800)}
 function restoreState(){
@@ -1728,7 +1766,7 @@ function restoreState(){
   for(const x of st.incs||[]){if((x.status==='resolved'&&now-x.resolvedAt>RESOLVED_SHOW)||(x.status!=='resolved'&&now-x.lastAt>ACTIVE_SHOW))continue;
     byId.set(x.id,addIncident({time:new Date(x.time)},{label:x.label},{lat:x.lat,lon:x.lon,precise:x.precise,label:x.label},x))}
   for(const x of st.lines.sort((a,b)=>a.time-b.time)){if(now-x.time>ACTIVE_SHOW)continue;
-    const e={id:x.id,time:new Date(x.time),text:x.text,kinds:x.kinds||[],check:x.check,checkNote:x.checkNote,fixes:x.fixes||[],unc:new Set(x.unc||[]),locs:[{words:x.locWords||[]}],hits:x.hits||[],results:[],final:true,alerted:true,resolvedChecked:true,restored:true,clip:x.clip,morse:x.morse||null,toned:!!x.toned,inherited:!!x.inherited,inheritedAt:x.inheritedAt?new Date(x.inheritedAt):null,plate:x.plate||null,vehicle:x.vehicle||null,complaint:x.complaint||null,addrCheck:x.addrCheck||null};
+    const e={id:x.id,time:new Date(x.time),text:x.text,kinds:x.kinds||[],check:x.check,checkNote:x.checkNote,fixes:x.fixes||[],unc:new Set(x.unc||[]),locs:[{words:x.locWords||[]}],hits:x.hits||[],results:[],final:true,alerted:true,resolvedChecked:true,restored:true,clip:x.clip,morse:x.morse||null,toned:!!x.toned,inherited:!!x.inherited,inheritedAt:x.inheritedAt?new Date(x.inheritedAt):null,plate:x.plate||null,vehicle:x.vehicle||null,complaint:x.complaint||null,addrCheck:x.addrCheck||null,cross:x.cross||[]};
     const inc=x.inc&&byId.get(x.inc);if(inc){e.inc=inc;inc.entries.push(e)}
     if(x.resolvedInc&&byId.get(x.resolvedInc))e.resolvedInc=byId.get(x.resolvedInc);
     reveal(e);
@@ -1825,6 +1863,10 @@ const API_BASE=QS.get('apibase'); // testing only
 // Free-plan usage over the last 24 h (Groq doesn't let web pages read its own counters)
 function countUse(kind){const k='use_'+kind,now=Date.now();const a=store.get(k,[]).filter(t=>now-t<864e5);a.push(now);store.set(k,a.slice(-5000))}
 const used=kind=>store.get('use_'+kind,[]).filter(t=>Date.now()-t<864e5).length;
+function countTok(model,n){const k='tok_'+model,now=Date.now();const a=store.get(k,[]).filter(x=>now-x[0]<864e5);a.push([now,n|0]);store.set(k,a.slice(-3000))}
+const usedTok=model=>store.get('tok_'+model,[]).filter(x=>Date.now()-x[0]<864e5).reduce((s,x)=>s+x[1],0);
+// what Groq said about the whole key when it hit a limit ("Limit 200000, Used 198641")
+function noteKeyLimit(model,msg){const m=String(msg).match(/(tokens|requests) per day[^:]*:\s*Limit (\d+), Used (\d+)/i);if(m){const k=store.get('keyLimits',{});k[model]={what:m[1].toLowerCase(),limit:+m[2],used:+m[3],at:Date.now()};store.set('keyLimits',k)}}
 const groqLimited={};
 const groqModel=()=>Date.now()<(groqLimited['whisper-large-v3']||0)?'whisper-large-v3-turbo':'whisper-large-v3';
 const PROVIDERS={
@@ -1834,7 +1876,7 @@ const PROVIDERS={
       const model=force||groqModel();
       const fd=new FormData();fd.append('file',wav,'call.wav');fd.append('model',model);fd.append('language','en');fd.append('temperature','0');fd.append('response_format','verbose_json');if(prompt)fd.append('prompt',prompt);
       const r=await groqFetch('/openai/v1/audio/transcriptions',{method:'POST',body:fd,signal:timeoutSignal(25000)});
-      if(!r.ok){const e=await apiErr(r);e.model=model;throw e}countUse('stt:'+model);const j=await r.json();
+      if(!r.ok){const e=await apiErr(r);e.model=model;if(r.status===429)noteKeyLimit(model,e.message);throw e}countUse('stt:'+model);const j=await r.json();
       if(!j.segments)return{text:j.text||'',unclear:[]};
       const segs=j.segments.filter(x=>!(x.no_speech_prob>0.6&&x.avg_logprob<-0.7)); // drop hiss that was "heard" as words
       return{text:segs.map(x=>x.text).join(' ').trim(),unclear:segs.filter(x=>x.avg_logprob<-0.85).map(x=>x.text)};
@@ -2229,9 +2271,18 @@ function paintEngine(){
     $('engineNote').innerHTML=shared?`Using the site's shared Groq key, so it works with no setup. It's shared by everyone using the site; if it runs into its daily limit, add your own free key from <a href="${P.keyUrl}" target="_blank" rel="noopener" style="color:var(--cyan)">${P.keyUrl.replace('https://','')}</a>.`:own?'Your own key is saved in this browser. Calls are transcribed in about a second.':`Get a key at <a href="${P.keyUrl}" target="_blank" rel="noopener" style="color:var(--cyan)">${P.keyUrl.replace('https://','')}</a>, then paste it here. It's saved only in this browser.`}
   else paintModels();
 }
+// Free Groq plan daily limits for each model the site uses
+const GROQ_FREE={'whisper-large-v3':{n:2000,u:'requests',label:'Transcription (Whisper Large v3)'},'whisper-large-v3-turbo':{n:2000,u:'requests',label:'Second hearing (Whisper Turbo)'},
+  'openai/gpt-oss-120b':{n:200000,u:'tokens',label:'Address & word check (GPT-OSS 120B)'},'qwen/qwen3.8-27b':{n:1000,u:'requests',label:'Backup check (Qwen 3.8)'},'openai/gpt-oss-20b':{n:200000,u:'tokens',label:'Backup check (GPT-OSS 20B)'}};
 function paintUsage(){
-  const a=used('stt:whisper-large-v3'),b=used('stt:whisper-large-v3-turbo'),c=used('ai');
-  $('usage').innerHTML=`Used from this browser in the last 24 hours: <b style="color:var(--text)">${(a+b).toLocaleString()}</b> transcriptions and <b style="color:var(--text)">${c.toLocaleString()}</b> address checks.`;
+  const own=!!ownKey('groq'),keyLim=store.get('keyLimits',{}),rows=[];
+  for(const[model,L]of Object.entries(GROQ_FREE)){
+    const mine=L.u==='tokens'?usedTok(model):(model.startsWith('whisper')?used('stt:'+model):used('ai:'+model));
+    const kl=keyLim[model]&&Date.now()-keyLim[model].at<864e5?keyLim[model]:null,pct=Math.min(100,Math.round(mine/L.n*100));
+    rows.push(`<div class="urow"><div class="ul"><span>${L.label}</span><b>${mine.toLocaleString()} / ${L.n.toLocaleString()} ${L.u} · ${pct}%</b></div><div class="ubar"><i style="width:${Math.max(pct,mine?2:0)}%"></i>${kl?`<i class="k" style="width:${Math.min(100,Math.round(kl.used/kl.limit*100))}%"></i>`:''}</div>${kl?`<div class="uk">Whole key: ${kl.used.toLocaleString()} / ${kl.limit.toLocaleString()} ${kl.what} (${Math.round(kl.used/kl.limit*100)}%) as of ${fmtTime(new Date(kl.at)).slice(0,5)}</div>`:''}</div>`);
+  }
+  const c=used('claude');
+  $('usage').innerHTML=`<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}${c?`<div class="uk" style="margin-top:6px">Claude checks today: ${c.toLocaleString()}</div>`:''}<div class="mnote">Bars show this browser's use over the last 24 hours. ${own?'You\'re using your own key.':'The shared key is used by everyone on the site, so the whole key can run out sooner; when Groq reports the whole key\'s total, it appears under the bar.'}</div>`;
 }
 function openSettings(){paintEngine();paintUsage();$('settingsDlg').showModal()}
 function openSetup(){if(!$('setupDlg').open)$('setupDlg').showModal();setTimeout(()=>$('setupKey').focus(),100)}
@@ -2249,7 +2300,7 @@ $('engine').onchange=()=>{const v=$('engine').value;store.set('engine',v);cloudB
   else{if(worker){worker.terminate();worker=null;modelReady=false}if(sttKey(v))aiStatus('READY · '+PROVIDERS[v].name.split(' ·')[0]);else aiStatus('NEEDS KEY')}
   paintEngine();pump()};
 function paintClaude(){const has=!!store.get('anthropicKey','');$('claudeKey').value='';$('claudeRemove').style.display=has?'':'none';
-  $('claudeNote').textContent=has?'Claude is double-checking calls with your key (billed to your Anthropic account, roughly $1 per day of listening).':'Every call is already heard twice and checked on Groq. Add an Anthropic key to have Claude do the check instead; it\'s billed to your Anthropic account (roughly $1 per day of listening) and saved only in this browser.'}
+  $('claudeNote').textContent=has?'Claude gives every call a final check with your key (billed to your Anthropic account).':'Every call is already heard twice and checked on Groq. Add an Anthropic API key (from console.anthropic.com) to have Claude give every call a final check. It\'s billed to that Anthropic account, likely a few dollars per day of listening, and saved only in this browser. A Claude Pro or Max subscription can\'t be used here; the API is billed separately.'}
 $('claudeSave').onclick=()=>{const v=$('claudeKey').value.trim();if(!/^sk-ant-/.test(v)){$('claudeNote').textContent='That doesn\'t look like an Anthropic key (they start with sk-ant-).';return}store.set('anthropicKey',v);paintClaude()};
 $('claudeRemove').onclick=()=>{store.del('anthropicKey');paintClaude()};
 paintClaude();
