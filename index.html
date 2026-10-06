@@ -487,7 +487,7 @@ const CODES={
  '10851':['Vehicle theft','THEFT','v'],'12500':["Driving without a license",'TRAFFIC STOP','v'],'14601':['Driving on a suspended license','TRAFFIC STOP','v'],'20001':['Hit and run with injury','COLLISION','v'],'20002':['Hit and run, property damage','COLLISION','v'],'23103':['Reckless driving','DUI / RECKLESS','v'],'23152':['Driving under the influence','DUI / RECKLESS','v'],'23153':['DUI causing injury','DUI / RECKLESS','v'],
  '11350':['Drug possession','DRUGS','h'],'11377':['Methamphetamine possession','DRUGS','h'],'11550':['Under the influence of drugs','DRUGS','h'],
  'BLS':['Basic Life Support ambulance (EMT level)','MEDICAL','a'],'ALS':['Advanced Life Support (paramedic level)','MEDICAL','a'],'MCI':['Mass-casualty incident','MEDICAL','a'],'RP':['Reporting party: the person who called',null,'a'],'GOA':['Gone on arrival',null,'a'],'UTL':['Unable to locate',null,'a'],'TC':['Traffic collision','COLLISION','a'],'DOA':['Dead on arrival','DEATH','a'],
- 'ETA':['Estimated time of arrival',null,'a'],'NRR':['No report required',null,'a'],'CHP':['California Highway Patrol',null,'a'],'ADW':['Assault with a deadly weapon','WEAPON','a'],'BOLO':['Be on the lookout',null,'a'],'ATL':['Attempt to locate',null,'a'],'GSW':['Gunshot wound','WEAPON','a'],'DUI':['Driving under the influence','DUI / RECKLESS','a'],'LKA':['Last known address',null,'a'],'CPR':['Cardiopulmonary resuscitation in progress','MEDICAL','a'],
+ 'ETA':['Estimated time of arrival',null,'a'],'NRR':['No report required',null,'a'],'x-ray':['H&S: a Health & Safety Code offense, usually drugs (e.g. "10-15 X-ray" = in custody on an H&S charge)','DRUGS','a'],'CHP':['California Highway Patrol',null,'a'],'ADW':['Assault with a deadly weapon','WEAPON','a'],'BOLO':['Be on the lookout',null,'a'],'ATL':['Attempt to locate',null,'a'],'GSW':['Gunshot wound','WEAPON','a'],'DUI':['Driving under the influence','DUI / RECKLESS','a'],'LKA':['Last known address',null,'a'],'CPR':['Cardiopulmonary resuscitation in progress','MEDICAL','a'],
  'calcord':['Statewide mutual-aid radio channel shared by agencies',null,'a'],'tac':['Tactical radio channel for the incident',null,'a'],
 };
 const CODE_COMPACT=new Set(['11-24','11-25','11-26','11-41','11-44','11-79','11-80','11-81','11-82','11-83','11-85','11-95','11-96','11-98','11-99']);
@@ -509,6 +509,9 @@ function codesIn(text,locWords){
     if(suf&&CODES[n+suf])add(n+suf,m[0].slice(m[1].length),at,true);else if(CODES[n])add(n,n,at,true)}
   const reP=/\b(?:PC|VC|HS)[- ]?(\d{3,5}(?:\.\d)?)/g;while((m=reP.exec(text)))if(CODES[m[1]])add(m[1],m[0],m.index); // "PC-166"
   const re5=/\b(BLS|ALS|MCI|RP|GOA|UTL|TC|DOA|ETA|NRR|CHP|ADW|BOLO|ATL|GSW|DUI|LKA|CPR)\b/g;while((m=re5.exec(text)))add(m[1],m[1],m.index);
+  {const rx=/\bx-?rays?\b/gi;while((m=rx.exec(text))){const after=text.slice(m.index+m[0].length,m.index+m[0].length+12),before=text.slice(Math.max(0,m.index-24),m.index);
+    // "X-rays 10-15", "10-15 X-ray", "for X-ray." mean H&S; "X-ray 12" (a unit) or "6 X-ray Boy" (a plate) don't
+    if(/^\s*,?\s*1[01]-\d/.test(after)||/\b(1[01]-15|for|custody|arrest(ed)?|booked)\s*,?\s*$/i.test(before)&&!/^[\s-]*\d/.test(after)||(/^\s*([.;!?]|$)/.test(after)&&!/\d\s*,?\s*$/.test(before)))add('x-ray',m[0],m.index)}}
   const re6=/\b(calcord|tac)\b/gi;while((m=re6.exec(text)))add(m[1].toLowerCase(),m[0],m.index);
   return out.sort((a,b)=>a.at-b.at);
 }
@@ -974,6 +977,7 @@ async function geocode(loc,town){
       if(!res&&SD.ready)res=streetLocal(loc.s,town);
     }else if(SD.ready&&loc.type==='cross'){
       res=crossLocal(loc.a,loc.b,town)||(town&&loc._carried?crossLocal(loc.a,loc.b,null):null);
+      if(!res&&(loc.a.names||loc.b.names)){const anyA={...loc.a,names:undefined},anyB={...loc.b,names:undefined};res=crossLocal(anyA,anyB,town)||(town&&loc._carried?crossLocal(anyA,anyB,null):null)} // "Mountain View Road" said, but it's Mountain View Drive that meets Santa Ynez
       if(res&&loc.inferred)res={...res,precise:false}; // worked out from "southbound from the 58", not said outright
       if(!res){const sb=streetLocal(loc.b,town),sa=sb?null:streetLocal(loc.a,town);res=sb?{...sb,label:loc.b.canon}:sa?{...sa,label:loc.a.canon}:null}
     }
@@ -1009,6 +1013,7 @@ Rules:
 - A code-looking number said right before a street is a house number: "10-95, 10-95, West McCoy Lane" = 1095 West McCoy Lane.
 - "cross of A and B" gives the cross streets of the address before it.
 - Calls can come from Santa Maria and other nearby cities; real addresses there are fine even when no candidate street matches.
+- "X-ray" said with a status ("X-rays 10-15") means H&S (a Health & Safety Code / drug charge), not the letter X.
 - Records checks: "DOV" is "DOB". "first of", "last of" and "middle of" introduce a spelled name; keep names as heard, don't guess others. "returns clear/valid/suspended", "10-29", "no wants" are records results, not places.
 - Numbers after room, bed, suite, apartment, space or gate are inside a building: never a highway or house number ("room 101" is not US 101).
 - Hospitals are named by short names: "French" = French Hospital, "Sierra" or "Sierra Vista" = Sierra Vista Hospital, "Twin" or "Twin Cities" = Twin Cities Hospital, "Marian" = Marian Hospital (Santa Maria), "AG hospital" = Arroyo Grande Hospital. For a patient move ("going to French, room 101, bed 2"), the location is the destination hospital: put it in "place".
@@ -1422,7 +1427,7 @@ function refreshNearby(how){
   const w=$('where');w.classList.toggle('warn',!inCounty);
   w.textContent=!inCounty?'This spot is outside San Luis Obispo County, so calls on this feed won\'t be near it.':`${place||'Zone set'}${meAcc?` · ±${Math.round(meAcc)} m`:''}${how?` · ${how}`:''}`;
 }
-function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.alert=!!(e.zone||(e.hits&&e.hits.length));drawLine(e)}}updateEdge()}
+function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge()}
 function geoError(err){
   const ios=/iPhone|iPad/.test(navigator.userAgent),w=$('where');w.classList.add('warn');zoneOpen(true);
   w.textContent=err&&err.code===1
@@ -1566,7 +1571,7 @@ function drawLine(entry){
   if(entry.complaint&&!entry.morse){const pol=servicesOf(entry).includes('police')&&!servicesOf(entry).includes('medical');tags.push(`<span class="tag cmp" title="What was reported"><b>${pol?'VIOLATION':'REPORTED'}</b> ${esc(entry.complaint)}</span>`)}
   for(const k of entry.units||[]){const U=UNITS.get(k);tags.push(`<span class="tag unit" data-unit="${esc(k)}" title="${esc((U&&U.status?'Last status: '+U.status+'. ':'')+'Tap to see every call from this unit')}">${esc((U&&U.label)||UNIT_LABEL.get(k)||k)}</span>`)}
   if(entry.zone&&!resolved)tags.push('<span class="tag al">IN YOUR ZONE</span>');
-  else if(entry.hits.length&&!resolved)tags.push(`<span class="tag al" title="${esc(entry.hits.map(h=>h.name).join(', '))}">WATCHED STREET</span>`);
+  else if(entry.hitAlert&&!resolved)tags.push(`<span class="tag al" title="${esc(entry.hits.map(h=>h.name).join(', '))}">WATCHED STREET</span>`);
   if(resolved)tags.push('<span class="tag ok">✓ RESOLVED</span>');
   if(entry.resolvedInc&&entry.resolvedInc!==inc)tags.push(`<span class="tag ok">✓ closes ${esc(entry.resolvedInc.label)}</span>`);
   if(!entry.morse)for(const c of codesIn(entry.text,locWordsOf(entry)).slice(0,5))tags.push(`<span class="tag code" tabindex="0" title="${esc(codeLabel(c)+': '+c.meaning+' · '+c.src)}"><b>${esc(codeLabel(c))}</b> ${esc(c.meaning)}</span>`);
@@ -1896,7 +1901,9 @@ function reveal(entry){
     if(!t&&entry.inc&&entry.inc.status==='active'&&entry.inc.entries[0]!==entry)t=entry.inc; // the call that opened the incident doesn't close it
     if(t&&t.entries[0]===entry&&!entry.resolves)t=null;
     if(t){entry.resolvedInc=t;resolveIncident(t,entry)}}
-  entry.alert=!!(entry.zone||entry.hits.length);
+  // a watched street only alerts when the call can't be placed exactly; if it's pinned precisely outside your zone, it doesn't
+  entry.hitAlert=!!(entry.hits.length&&!(entry.inc&&!entry.inc.gone&&entry.inc.precise&&!entry.inc.inZone));
+  entry.alert=!!(entry.zone||entry.hitAlert);
   drawLine(entry);
   if(entry.inc&&entry.inc.marker.isPopupOpen&&entry.inc.marker.isPopupOpen())entry.inc.marker.setPopupContent(callPopup(entry,{label:entry.inc.label,precise:entry.inc.precise}));
   if(newPin){
@@ -1909,7 +1916,7 @@ function reveal(entry){
   updateEdge();saveState();
   if(entry.alerted)return;
   if(entry.zone){entry.alerted=true;const g=entry.geo.g;raiseAlert('POLICE ACTIVITY NEAR YOU',`${entry.inc.label} (${(dist(me,[g.lat,g.lon])/MILE).toFixed(2)} mi away)${entry.kinds.length?' · '+entry.kinds.join(', '):''}: “${entry.text}”`,[g.lat,g.lon],`Police activity near you. ${entry.kinds.length?entry.kinds[0].toLowerCase()+' at ':''}${entry.inc.label.replace(/\(.*?\)/g,'')}, ${(dist(me,[g.lat,g.lon])/MILE).toFixed(1)} miles away.`)}
-  else if(entry.hits.length){entry.alerted=true;raiseAlert('WATCHED STREET MENTIONED',`${entry.hits.map(h=>h.name).join(', ')}: “${entry.text}”`,entry.inc?[entry.inc.lat,entry.inc.lon]:null)}
+  else if(entry.hitAlert){entry.alerted=true;raiseAlert('WATCHED STREET MENTIONED',`${entry.hits.map(h=>h.name).join(', ')}: “${entry.text}”`,entry.inc?[entry.inc.lat,entry.inc.lon]:null)}
 }
 async function handleTyped(text){const e={id:'t'+Date.now().toString(36),time:new Date(),streamT:null,final:true};await prepare(e,{text,unc:new Set(),agree:true},{typed:true});reveal(e)}
 $('testForm').onsubmit=e=>{e.preventDefault();const v=$('testInput').value.trim();if(v){handleTyped(v);$('testInput').value='';$('settingsDlg').close()}};
