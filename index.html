@@ -182,6 +182,15 @@
     .urow{margin:7px 0}.ul{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}.ul b{color:var(--text);font-weight:750;white-space:nowrap}
     .ubar{position:relative;height:6px;border-radius:3px;background:#12293a;margin-top:4px;overflow:hidden}.ubar i{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:3px}.ubar i.k{background:#ff864e}
     .uk{font-size:11px;color:#ffb48f;margin-top:3px}
+    .tag.unit{background:#0b1e2b;border-color:#61dcff66;color:#bfefff;font-family:ui-monospace,Menlo,monospace;cursor:pointer}
+    .tag.unit:hover{border-color:var(--cyan)}
+    #unitsPanel{display:none;max-height:38%;overflow-y:auto;border-bottom:1px solid var(--line2);background:#06121c}
+    #unitsPanel.open{display:block}
+    .urow2{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;width:100%;min-height:0;padding:8px 14px;background:none;border:0;border-bottom:1px solid #12293a;border-radius:0;text-align:left;color:var(--text);font:600 12px Inter,system-ui,sans-serif;letter-spacing:0;white-space:normal}
+    .urow2:hover{filter:none;background:#0d2232}
+    .urow2 b{font-family:ui-monospace,Menlo,monospace;color:var(--cyan);font-size:12.5px}
+    .urow2 .ust{color:#d9ebf2}.urow2 .umeta{grid-column:2;color:var(--dim);font-size:11px}
+    #unitsBtn.on{border-color:var(--cyan);color:var(--cyan)}
     .tag.fixd{background:#2a1f08;border-color:#a8822e;color:#ffe2a6;cursor:help}
     .tag.plate{background:#f2f4f0;border-color:#c9d2cc;color:#1b2a6b;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}
     .tag.plate b{color:#1b2a6b;font-weight:900;letter-spacing:.12em;margin-right:4px}
@@ -274,7 +283,8 @@
 
   <aside id="feed" class="glass" aria-label="Live transcript">
     <div class="grab"></div>
-    <div class="phead" id="feedHead">LIVE TRANSCRIPT <span class="muted" id="tCount"></span><span class="muted" id="upcoming"></span><span class="spacer"></span><button class="secondary" id="feedToggle" type="button" title="Collapse the transcript">HIDE</button></div>
+    <div class="phead" id="feedHead">LIVE TRANSCRIPT <span class="muted" id="tCount"></span><span class="muted" id="upcoming"></span><span class="spacer"></span><button class="secondary" id="unitsBtn" type="button" title="Units heard on the radio and their last status">UNITS <span id="unitsN"></span></button><button class="secondary" id="feedToggle" type="button" title="Collapse the transcript">HIDE</button></div>
+    <div id="unitsPanel"><div id="unitsList"></div></div>
     <div id="transcript"><div class="empty" id="emptyMsg"><b>Tap START LISTENING.</b> Calls appear here as you hear them and are pinned on the map. Tap ▶ to hear a call again. Green pins are resolved.</div></div>
     <div id="legend" aria-label="Pin colors"></div>
   </aside>
@@ -442,7 +452,7 @@ function inheritKinds(entry){
   if(!src&&entry.units&&entry.units.size)src=[...lines].reverse().find(e=>typed(e)&&entry.time-e.time<15*60e3&&e.units&&[...entry.units].some(u=>e.units.has(u)));
   if(!src){ // a reply right after a typed call: look back at most two transmissions, within a minute
     const prev=lines.filter(e=>e!==entry&&!e.morse&&e.time<=entry.time).sort((a,b)=>b.time-a.time).slice(0,2);
-    src=prev.find(e=>typed(e)&&entry.time-e.time<60e3)||null}
+    src=prev.find(e=>typed(e)&&entry.time-e.time<60e3&&!(entry.units&&entry.units.size&&![...entry.units].some(u=>e.units&&e.units.has(u))))||null} // a different unit talking is a different conversation
   if(src){entry.kinds=[src.kinds[0]];entry.inherited=true;entry.inheritedAt=src.time;entry.inheritedFrom=src}
   else if(entry.inherited){entry.kinds=[];entry.inherited=false;entry.inheritedFrom=null}
 }
@@ -477,7 +487,7 @@ const CODES={
  '10851':['Vehicle theft','THEFT','v'],'12500':["Driving without a license",'TRAFFIC STOP','v'],'14601':['Driving on a suspended license','TRAFFIC STOP','v'],'20001':['Hit and run with injury','COLLISION','v'],'20002':['Hit and run, property damage','COLLISION','v'],'23103':['Reckless driving','DUI / RECKLESS','v'],'23152':['Driving under the influence','DUI / RECKLESS','v'],'23153':['DUI causing injury','DUI / RECKLESS','v'],
  '11350':['Drug possession','DRUGS','h'],'11377':['Methamphetamine possession','DRUGS','h'],'11550':['Under the influence of drugs','DRUGS','h'],
  'BLS':['Basic Life Support ambulance (EMT level)','MEDICAL','a'],'ALS':['Advanced Life Support (paramedic level)','MEDICAL','a'],'MCI':['Mass-casualty incident','MEDICAL','a'],'RP':['Reporting party: the person who called',null,'a'],'GOA':['Gone on arrival',null,'a'],'UTL':['Unable to locate',null,'a'],'TC':['Traffic collision','COLLISION','a'],'DOA':['Dead on arrival','DEATH','a'],
- 'ETA':['Estimated time of arrival',null,'a'],'CHP':['California Highway Patrol',null,'a'],'ADW':['Assault with a deadly weapon','WEAPON','a'],'BOLO':['Be on the lookout',null,'a'],'ATL':['Attempt to locate',null,'a'],'GSW':['Gunshot wound','WEAPON','a'],'DUI':['Driving under the influence','DUI / RECKLESS','a'],'LKA':['Last known address',null,'a'],'CPR':['Cardiopulmonary resuscitation in progress','MEDICAL','a'],
+ 'ETA':['Estimated time of arrival',null,'a'],'NRR':['No report required',null,'a'],'CHP':['California Highway Patrol',null,'a'],'ADW':['Assault with a deadly weapon','WEAPON','a'],'BOLO':['Be on the lookout',null,'a'],'ATL':['Attempt to locate',null,'a'],'GSW':['Gunshot wound','WEAPON','a'],'DUI':['Driving under the influence','DUI / RECKLESS','a'],'LKA':['Last known address',null,'a'],'CPR':['Cardiopulmonary resuscitation in progress','MEDICAL','a'],
  'calcord':['Statewide mutual-aid radio channel shared by agencies',null,'a'],'tac':['Tactical radio channel for the incident',null,'a'],
 };
 const CODE_COMPACT=new Set(['11-24','11-25','11-26','11-41','11-44','11-79','11-80','11-81','11-82','11-83','11-85','11-95','11-96','11-98','11-99']);
@@ -498,7 +508,7 @@ function codesIn(text,locWords){
   while((m=re4.exec(text))){const n=m[2],suf=(m[3]||'').toLowerCase(),at=m.index+m[1].length;
     if(suf&&CODES[n+suf])add(n+suf,m[0].slice(m[1].length),at,true);else if(CODES[n])add(n,n,at,true)}
   const reP=/\b(?:PC|VC|HS)[- ]?(\d{3,5}(?:\.\d)?)/g;while((m=reP.exec(text)))if(CODES[m[1]])add(m[1],m[0],m.index); // "PC-166"
-  const re5=/\b(BLS|ALS|MCI|RP|GOA|UTL|TC|DOA|ETA|CHP|ADW|BOLO|ATL|GSW|DUI|LKA|CPR)\b/g;while((m=re5.exec(text)))add(m[1],m[1],m.index);
+  const re5=/\b(BLS|ALS|MCI|RP|GOA|UTL|TC|DOA|ETA|NRR|CHP|ADW|BOLO|ATL|GSW|DUI|LKA|CPR)\b/g;while((m=re5.exec(text)))add(m[1],m[1],m.index);
   const re6=/\b(calcord|tac)\b/gi;while((m=re6.exec(text)))add(m[1].toLowerCase(),m[0],m.index);
   return out.sort((a,b)=>a.at-b.at);
 }
@@ -1554,6 +1564,7 @@ function drawLine(entry){
   if(entry.plate)tags.push(`<span class="tag plate" title="License plate read on the radio${entry.vehicle?': '+esc(entry.vehicle):''}"><b>${esc(entry.plate)}</b>${entry.vehicle?' '+esc(entry.vehicle):''}</span>`);
   else if(entry.vehicle&&!entry.morse)tags.push(`<span class="tag veh">${esc(entry.vehicle)}</span>`);
   if(entry.complaint&&!entry.morse){const pol=servicesOf(entry).includes('police')&&!servicesOf(entry).includes('medical');tags.push(`<span class="tag cmp" title="What was reported"><b>${pol?'VIOLATION':'REPORTED'}</b> ${esc(entry.complaint)}</span>`)}
+  for(const k of entry.units||[]){const U=UNITS.get(k);tags.push(`<span class="tag unit" data-unit="${esc(k)}" title="${esc((U&&U.status?'Last status: '+U.status+'. ':'')+'Tap to see every call from this unit')}">${esc((U&&U.label)||UNIT_LABEL.get(k)||k)}</span>`)}
   if(entry.zone&&!resolved)tags.push('<span class="tag al">IN YOUR ZONE</span>');
   else if(entry.hits.length&&!resolved)tags.push(`<span class="tag al" title="${esc(entry.hits.map(h=>h.name).join(', '))}">WATCHED STREET</span>`);
   if(resolved)tags.push('<span class="tag ok">✓ RESOLVED</span>');
@@ -1766,14 +1777,47 @@ async function regionalFallback(entry){
   if(fixed!==entry.text){entry.fixes=entry.fixes.concat(wordFixes(entry.text,fixed));entry.text=fixed}
   return resolveAIWords({number:m[1],street:best.nm,cross:null,town:null,place:null},entry.text);
 }
-const RESOLVE=/\b(10-?8|10-?98|code ?4|all clear|i'?ll be clear|(we'?re|i'?m|be|show (me|us)) clear|clear(ed)? (the scene|from|here|of)|back in service|in service|cancel(l?ed)?|disregard|gone on arrival|goa|unable to locate|utl|report to follow|in custody|nothing found|negative contact|returning to (the )?(station|quarters))\b/i;
+const RESOLVE=/\b(10-?8|10-?98|code ?4|all clear|i'?ll be clear|(we'?re|i'?m|be|show (me|us)) clear|clear(ed)? (the scene|from|here|of)|back in service|in service|cancel(l?ed)?|disregard|gone on arrival|goa|unable to locate|utl|report to follow|in custody|nothing found|returning to (the )?(station|quarters))\b/i;
 // unit call signs: "23 Adam 6-2", "Adam 62", "Medic 41", "Engine 5", "Battalion 2"
+const UNIT_LABEL=new Map();
 function callsigns(text){
-  const out=new Set(),t=text.toLowerCase().replace(/[,.;:!?]/g,' ');
+  const out=new Set(),t=text.replace(/[,.;:!?]/g,' ');
   const ph=[...PHONETIC].filter(w=>w.length>2).join('|');
-  for(const m of t.matchAll(new RegExp(`\\b(${ph})[\\s-]*(\\d{1,3}(?:[\\s-]\\d{1,3})?)\\b`,'g')))out.add(m[1]+m[2].replace(/\D/g,''));
-  for(const m of t.matchAll(/\b(medic|engine|battalion|truck|rescue|squad|car|unit)[\s-]*(\d{1,4})\b/g))out.add(m[1]+m[2]);
+  for(const m of t.matchAll(new RegExp(`\\b(${ph})[\\s-]*(\\d{1,3}(?:[\\s-]\\d{1,3})?)\\b`,'gi'))){const k=m[1].toLowerCase()+m[2].replace(/\D/g,'');out.add(k);if(!UNIT_LABEL.has(k))UNIT_LABEL.set(k,titleCase(m[1].toLowerCase())+' '+m[2].trim().replace(/\s+/g,'-'))}
+  for(const m of t.matchAll(/\b(medic|engine|battalion|truck|rescue|squad|car|unit)[\s-]*(\d{1,4}(?:-\d{1,2})?)\b/gi)){const k=m[1].toLowerCase()+m[2].replace(/\D/g,'');out.add(k);if(!UNIT_LABEL.has(k))UNIT_LABEL.set(k,titleCase(m[1].toLowerCase())+' '+m[2])}
+  // numbered patrol units ("23-71, X-ray 10-15", "this is 21-21"), not 10- or 11- codes
+  for(const m of text.matchAll(/(?:^|[.!?]\s+|\b(?:this is|copy|from)\s+)(\d{1,2}-\d{2,3})\b/gi)){const id=m[1];if(/^1[01]-/.test(id))continue;const k='u'+id.replace('-','');out.add(k);UNIT_LABEL.set(k,id)}
   return out;
+}
+// Units heard on the radio: last status, last call, and every call they were on
+const UNITS=new Map();
+function unitStatus(text){
+  for(const c of codesIn(text,[]))if(/^(1[01]-|code )/.test(c.key)&&c.key!=='10-4'&&c.key!=='10-9')return `${codeLabel(c)} · ${c.meaning}`;
+  if(/\b(en ?route|responding|headed|heading)\b/i.test(text))return'En route';
+  if(/\b(on scene|arrived|i'?m here|we'?re here)\b/i.test(text))return'On scene';
+  if(/\b(clear|in service|available)\b/i.test(text))return'Available';
+  return null;
+}
+function noteUnits(entry){
+  const keys=[...(entry.units||[])];
+  keys.forEach((k,i)=>{let U=UNITS.get(k);if(!U){U={key:k,label:UNIT_LABEL.get(k)||k,calls:[]};UNITS.set(k,U)}
+    if(!U.calls.includes(entry))U.calls.push(entry);U.calls.sort((a,b)=>a.time-b.time);U.last=Math.max(U.last||0,+entry.time);
+    if(i===0){const st=unitStatus(entry.text);if(st&&(!U.statusAt||+entry.time>=U.statusAt)){U.status=st;U.statusAt=+entry.time}} // the first unit named is usually the one talking
+    if(entry.inc&&!entry.inc.gone)U.inc=entry.inc});
+  paintUnits();
+}
+function paintUnits(){
+  const now=Date.now(),list=[...UNITS.values()].filter(u=>now-u.last<2*36e5).sort((a,b)=>b.last-a.last);
+  $('unitsN').textContent=list.length?String(list.length):'';
+  if(!$('unitsPanel').classList.contains('open'))return;
+  $('unitsList').innerHTML=list.length?list.map(u=>`<button type="button" class="urow2" data-unit="${esc(u.key)}"><b>${esc(u.label)}</b><span class="ust">${esc(u.status||'—')}</span><span class="umeta">${fmtTime(new Date(u.last)).slice(0,5)} · ${u.calls.length} call${u.calls.length>1?'s':''}${u.inc&&!u.inc.gone?' · '+esc(u.inc.label):''}</span></button>`).join(''):'<div class="empty">No units heard yet. Call signs like 23-71, Adam 12 or Medic 7-1 show up here.</div>';
+}
+let focusedUnit=null;
+function showUnit(k){
+  const U=UNITS.get(k);if(!U)return;
+  for(const l of lines)if(l.el)l.el.classList.toggle('related',U.calls.includes(l));focusedUnit=k;
+  const first=U.calls.find(e=>e.el&&e.el.isConnected);if(first)first.el.scrollIntoView({block:'center',behavior:'smooth'});
+  if(U.inc&&!U.inc.gone){U.inc.marker.openPopup()}
 }
 const CLIP_KEEP=30*60e3;
 const ClipDB={db:null,
@@ -1820,6 +1864,7 @@ function reveal(entry){
     entry.el=document.createElement('div');lines.push(entry);
     entry.el.addEventListener('click',e=>{
       if(e.target.closest('.play')){playClip(entry);return}
+      {const u=e.target.closest('.tag.unit');if(u){e.stopPropagation();showUnit(u.dataset.unit);return}}
       if(!entry.inc||entry.inc.gone)return;if(entry.inc.line)map.fitBounds(L.latLngBounds(entry.inc.line.flat()),{maxZoom:16,...fitPad()});else map.setView([entry.inc.lat,entry.inc.lon],Math.max(map.getZoom(),15));entry.inc.marker.openPopup();focusIncident(entry.inc,false);if(innerWidth<=760)setSheet(false)});
     const box=$('transcript'),atTop=box.scrollTop<40;box.prepend(entry.el);if(atTop)box.scrollTop=0;
     while(box.children.length>400)box.lastChild.remove();
@@ -1839,6 +1884,7 @@ function reveal(entry){
   inheritKinds(entry);
   if(entry.inc)styleInc(entry.inc);
   if(!entry.inherited)refreshInheritors(entry);
+  noteUnits(entry);
   // move the pin only when this call created it (its full version arrived) or it pins the place more precisely
   if(entry.geo&&entry.inc&&!newPin&&(entry.inc.entries[0]===entry||(entry.geo.g.precise&&!entry.inc.precise))){const{loc,g}=entry.geo;
     Object.assign(entry.inc,{lat:g.lat,lon:g.lon,precise:g.precise,label:g.label||loc.label});entry.inc.marker.setLatLng([g.lat,g.lon]);setIncLine(entry.inc,lineFor(loc,g));entry.inc.inZone=incDist(entry.inc)<=radiusM();styleInc(entry.inc)}
@@ -1847,7 +1893,8 @@ function reveal(entry){
   if(entry.final&&RESOLVE.test(entry.text)&&!entry.resolvedChecked){entry.resolvedChecked=true;
     let t=entry.resolves?incidents.find(i=>i.id===entry.resolves&&!i.gone):null;
     if(!t&&entry.units.size)t=[...incidents].reverse().find(i=>!i.gone&&i.status==='active'&&Date.now()-i.lastAt<ACTIVE_SHOW&&[...entry.units].some(u=>i.units.has(u)));
-    if(!t&&entry.inc&&entry.inc.status==='active')t=entry.inc;
+    if(!t&&entry.inc&&entry.inc.status==='active'&&entry.inc.entries[0]!==entry)t=entry.inc; // the call that opened the incident doesn't close it
+    if(t&&t.entries[0]===entry&&!entry.resolves)t=null;
     if(t){entry.resolvedInc=t;resolveIncident(t,entry)}}
   entry.alert=!!(entry.zone||entry.hits.length);
   drawLine(entry);
@@ -1866,13 +1913,16 @@ function reveal(entry){
 }
 async function handleTyped(text){const e={id:'t'+Date.now().toString(36),time:new Date(),streamT:null,final:true};await prepare(e,{text,unc:new Set(),agree:true},{typed:true});reveal(e)}
 $('testForm').onsubmit=e=>{e.preventDefault();const v=$('testInput').value.trim();if(v){handleTyped(v);$('testInput').value='';$('settingsDlg').close()}};
-$('clearBtn').onclick=()=>{focusedInc=null;lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
+$('clearBtn').onclick=()=>{focusedInc=null;UNITS.clear();paintUnits();lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
 $('exportBtn').onclick=()=>{const txt=lines.map(l=>`[${l.time.toLocaleString()}] ${l.text}${l.results.length?'  {'+l.results.map(r=>r.label).join('; ')+'}':''}`).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download=`slo-dispatch-${new Date().toISOString().slice(0,16).replace(':','')}.txt`;a.click()};
 // Phone sheet
 $('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--red)"></i>In your zone</span>`;
 function setSheet(open){$('feed').classList.toggle('open',open);document.body.classList.toggle('sheet-open',open)}
 $('feedHead').onclick=e=>{if(e.target.closest('button'))return;if(innerWidth<=760)setSheet(!$('feed').classList.contains('open'))};
 document.querySelector('#feed .grab').onclick=()=>setSheet(!$('feed').classList.contains('open'));
+$('unitsBtn').onclick=e=>{e.stopPropagation();const o=$('unitsPanel').classList.toggle('open');$('unitsBtn').classList.toggle('on',o);paintUnits()};
+$('unitsList').onclick=e=>{const b=e.target.closest('[data-unit]');if(b)showUnit(b.dataset.unit)};
+setInterval(paintUnits,60e3);
 $('feedToggle').onclick=()=>{const c=$('feed').classList.toggle('collapsed');$('feedToggle').textContent=c?'SHOW':'HIDE'};
 
 /* ================================================================
