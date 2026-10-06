@@ -182,6 +182,8 @@
     .urow{margin:7px 0}.ul{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--muted)}.ul b{color:var(--text);font-weight:750;white-space:nowrap}
     .ubar{position:relative;height:6px;border-radius:3px;background:#12293a;margin-top:4px;overflow:hidden}.ubar i{position:absolute;left:0;top:0;bottom:0;background:var(--cyan);border-radius:3px}.ubar i.k{background:#ff864e}
     .uk{font-size:11px;color:#ffb48f;margin-top:3px}
+    .upin{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;transform:translate(-11px,0);padding:3px 8px 3px 4px;border-radius:12px;background:#061019ee;border:1.5px solid var(--c);color:#eaf6fb;font:800 10.5px ui-monospace,Menlo,monospace;letter-spacing:.03em;box-shadow:0 3px 10px #000a;cursor:pointer}
+    .upin i{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px #061019,0 0 10px var(--c)}
     .tag.unit{background:#0b1e2b;border-color:#61dcff66;color:#bfefff;font-family:ui-monospace,Menlo,monospace;cursor:pointer}
     .tag.unit:hover{border-color:var(--cyan)}
     #unitsPanel{display:none;max-height:38%;overflow-y:auto;border-bottom:1px solid var(--line2);background:#06121c}
@@ -329,6 +331,9 @@
         <div class="lbl" style="margin-top:14px">CALL PICKUP SENSITIVITY <span id="sensLbl"></span></div>
         <input id="sens" type="range" min="1" max="10" step="1" value="6" aria-label="Call pickup sensitivity">
         <div class="mnote">How far above the background static a transmission must be to count as a call. Turn it up if quiet calls are missed; turn it down if static or hiss shows up as calls.</div>
+      </div>
+      <div><div class="lbl">MAP</div>
+        <label class="switch"><input type="checkbox" id="optUnitsMap" checked><span>Show units on the map<small>Estimated from the radio traffic, not GPS: a unit sent to a call is drawn on the likely road route from where it was last heard.</small></span></label>
       </div>
       <div><div class="lbl">ALERTS IN YOUR ZONE</div>
         <label class="switch"><input type="checkbox" id="optLoud" checked><span>Loud alert beeps<small>Louder, repeated beeps, with the radio turned down while they play.</small></span></label>
@@ -895,11 +900,13 @@ function snapNames(text){
   const parts=text.split(/(\s+)/),W=[];
   parts.forEach((p,ix)=>{if(!p.trim())return;const m=p.match(/^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/);W.push({ix,lead:m[1],body:m[2],trail:m[3],core:coreOf(m[2]),cap:/^[A-Z]/.test(m[2])})});
   const fixes=[],townKeys=Object.keys(TOWNS).filter(t=>t.length>=4);
+  const lmWords=new Set();for(const l of LANDMARKS){const m=text.match(l.re);if(m)for(const w of m[0].split(/\s+/))lmWords.add(coreOf(w))}
+  {const m=text.match(/\b([A-Z][a-z]+)\s+(hospital|medical center|center|college|school|park|church|mall|plaza|library|stadium|airport|hall)\b/g);if(m)for(const x of m)for(const w of x.split(/\s+/))lmWords.add(coreOf(w))}
   const exactAt=i=>{for(let n=Math.min(4,W.length-i);n>=1;n--){const c=W.slice(i,i+n).map(w=>w.core).join(' ');if(streetIndex.has(c)||TOWNS[c])return n}return 0};
   for(let i=0;i<W.length;i++){
     const ex=exactAt(i);if(ex){i+=ex-1;continue} // already a real name
     for(let n=Math.min(3,W.length-i);n>=1;n--){
-      const win=W.slice(i,i+n);if(win.some(w=>!w.core||/^\d/.test(w.core)||(!w.cap&&(COMMON_EN.has(w.core)||STOP.has(w.core)))))continue;
+      const win=W.slice(i,i+n);if(win.some(w=>lmWords.has(w.core)))continue;if(win.some(w=>!w.core||/^\d/.test(w.core)||(!w.cap&&(COMMON_EN.has(w.core)||STOP.has(w.core)))))continue;
       if(n>1&&win.slice(0,-1).some(w=>w.trail))continue;
       const prev=i>0?W[i-1].core:'',next=i+n<W.length?W[i+n].core:'',after=i+n+1<W.length?W[i+n+1].core:'',before=i>1?W[i-2].core:'';
       const nextSuffix=SUFFIX[next]===1,numBefore=/^\d{2,5}$/.test(prev)||(prev==='of'&&/^block$/.test(before));
@@ -1818,6 +1825,59 @@ function paintUnits(){
   $('unitsList').innerHTML=list.length?list.map(u=>`<button type="button" class="urow2" data-unit="${esc(u.key)}"><b>${esc(u.label)}</b><span class="ust">${esc(u.status||'—')}</span><span class="umeta">${fmtTime(new Date(u.last)).slice(0,5)} · ${u.calls.length} call${u.calls.length>1?'s':''}${u.inc&&!u.inc.gone?' · '+esc(u.inc.label):''}</span></button>`).join(''):'<div class="empty">No units heard yet. Call signs like 23-71, Adam 12 or Medic 7-1 show up here.</div>';
 }
 let focusedUnit=null;
+/* ---------- Units on the map (estimated from the radio, not GPS) ----------
+   When a unit is sent somewhere ("Medic 12, code 3 to Hearst Castle") and we know where it was last, the likely road
+   route is drawn and the unit moves along it at driving speed. "On scene" puts it at the call. */
+const unitLayer=L.layerGroup().addTo(map),UNIT_TRACK=new Map(),routeCache=new Map();
+const unitsMapOn=()=>$('optUnitsMap').checked;
+const unitSvc=k=>/^(medic|ambulance)/.test(k)?'medical':/^(engine|battalion|truck|rescue|squad)/.test(k)?'fire':'police';
+async function roadRoute(a,b){
+  const key=[a,b].map(p=>p.lat.toFixed(4)+','+p.lon.toFixed(4)).join(';');if(routeCache.has(key))return routeCache.get(key);
+  try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`,{signal:timeoutSignal(9000)});
+    const j=await r.json();const rt=j.routes&&j.routes[0];if(!rt)return null;
+    const coords=rt.geometry.coordinates.map(c=>[c[1],c[0]]),cum=[0];for(let i=1;i<coords.length;i++)cum.push(cum[i-1]+dist(coords[i-1],coords[i]));
+    const out={coords,cum,total:cum[cum.length-1]||1,dur:rt.duration};routeCache.set(key,out);return out}catch{return null}
+}
+function tripPos(tr,now){ // where the unit should be by now, if it drives the route at the expected speed
+  if(!tr.route)return null;const dur=tr.route.dur*(tr.code3?0.8:1)*1000,f=Math.max(0,Math.min(1,(now-tr.start)/dur)),d=f*tr.route.total,c=tr.route.cum;
+  let i=1;while(i<c.length&&c[i]<d)i++;if(i>=c.length)return{lat:tr.to.lat,lon:tr.to.lon,f:1,left:0};
+  const t=(d-c[i-1])/((c[i]-c[i-1])||1),A=tr.route.coords[i-1],B=tr.route.coords[i];return{lat:A[0]+(B[0]-A[0])*t,lon:A[1]+(B[1]-A[1])*t,f,left:Math.max(0,dur-(now-tr.start))};
+}
+function unitWhere(T,now){
+  if(T.trip){const p=tripPos(T.trip,now);if(p)return p;
+    if(!T.trip.from||now-T.trip.start>20*60e3)return{lat:T.trip.to.lat,lon:T.trip.to.lon,f:now-T.trip.start>20*60e3?1:0,noStart:true}} // starting point unknown: show it at the call
+  return T.at?{lat:T.at.lat,lon:T.at.lon,f:1}:null;
+}
+function trackUnits(entry){
+  if(!entry.final||!entry.units||!entry.units.size)return;
+  const geo=entry.inc&&!entry.inc.gone?{lat:entry.inc.lat,lon:entry.inc.lon,label:entry.inc.label}:null,t=+entry.time,now=Date.now();
+  const onScene=/\b(on ?scene|10-97|arrived|at scene|we'?re here|i'?m here)\b/i.test(entry.text);
+  [...entry.units].forEach((k,idx)=>{
+    const T=UNIT_TRACK.get(k)||{key:k};UNIT_TRACK.set(k,T);T.last=Math.max(T.last||0,t);
+    if(!geo)return;
+    if(onScene){T.at={...geo,t};T.trip=null;return}
+    if(T.trip&&dist([T.trip.to.lat,T.trip.to.lon],[geo.lat,geo.lon])<150)return; // already heading there
+    const from=unitWhere(T,t);if(T.trip&&!T.trip.route&&T.trip.to)T.at={...T.trip.to,t:T.trip.start};
+    T.trip={to:geo,start:t,from,code3:/\bcode ?3\b/i.test(entry.text),route:null};
+    if(from&&dist([from.lat,from.lon],[geo.lat,geo.lon])>250)roadRoute(from,geo).then(r=>{if(T.trip&&T.trip.to===geo){T.trip.route=r;drawUnits()}});
+  });
+  drawUnits();
+}
+function drawUnits(){
+  unitLayer.clearLayers();if(!unitsMapOn()||!MAP_OK)return;
+  const now=Date.now();
+  for(const[k,T]of UNIT_TRACK){
+    if(now-(T.last||0)>2*36e5)continue;
+    const p=unitWhere(T,now);if(!p)continue;
+    const col=SERVICES[unitSvc(k)].color,label=(UNITS.get(k)||{}).label||UNIT_LABEL.get(k)||k;
+    if(T.trip&&T.trip.route&&p.f<1)L.polyline(T.trip.route.coords,{color:col,weight:3,opacity:.75,dashArray:'6 6',interactive:false}).addTo(unitLayer);
+    const eta=T.trip&&T.trip.route&&p.f<1?` · ~${Math.max(1,Math.round(p.left/60e3))} min`:T.trip&&!T.trip.route&&now-T.trip.start<20*60e3?' · en route':'';
+    const m=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',iconSize:null,iconAnchor:[0,11],html:`<div class="upin" style="--c:${col}"><i></i>${esc(label)}${eta}</div>`}),zIndexOffset:800,keyboard:false,
+      title:`${label}: estimated from radio traffic, not GPS${T.trip&&!T.trip.route?' (starting point unknown, shown at the call)':''}`}).addTo(unitLayer);
+    m.on('click',()=>showUnit(k));
+  }
+}
+setInterval(()=>{if(UNIT_TRACK.size)drawUnits()},5000);
 function showUnit(k){
   const U=UNITS.get(k);if(!U)return;
   for(const l of lines)if(l.el)l.el.classList.toggle('related',U.calls.includes(l));focusedUnit=k;
@@ -1889,7 +1949,7 @@ function reveal(entry){
   inheritKinds(entry);
   if(entry.inc)styleInc(entry.inc);
   if(!entry.inherited)refreshInheritors(entry);
-  noteUnits(entry);
+  noteUnits(entry);trackUnits(entry);
   // move the pin only when this call created it (its full version arrived) or it pins the place more precisely
   if(entry.geo&&entry.inc&&!newPin&&(entry.inc.entries[0]===entry||(entry.geo.g.precise&&!entry.inc.precise))){const{loc,g}=entry.geo;
     Object.assign(entry.inc,{lat:g.lat,lon:g.lon,precise:g.precise,label:g.label||loc.label});entry.inc.marker.setLatLng([g.lat,g.lon]);setIncLine(entry.inc,lineFor(loc,g));entry.inc.inZone=incDist(entry.inc)<=radiusM();styleInc(entry.inc)}
@@ -1920,13 +1980,14 @@ function reveal(entry){
 }
 async function handleTyped(text){const e={id:'t'+Date.now().toString(36),time:new Date(),streamT:null,final:true};await prepare(e,{text,unc:new Set(),agree:true},{typed:true});reveal(e)}
 $('testForm').onsubmit=e=>{e.preventDefault();const v=$('testInput').value.trim();if(v){handleTyped(v);$('testInput').value='';$('settingsDlg').close()}};
-$('clearBtn').onclick=()=>{focusedInc=null;UNITS.clear();paintUnits();lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
+$('clearBtn').onclick=()=>{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits();lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';incidentLayer.clearLayers();incidents.length=0;store.del('dw_state');updateEdge()};
 $('exportBtn').onclick=()=>{const txt=lines.map(l=>`[${l.time.toLocaleString()}] ${l.text}${l.results.length?'  {'+l.results.map(r=>r.label).join('; ')+'}':''}`).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download=`slo-dispatch-${new Date().toISOString().slice(0,16).replace(':','')}.txt`;a.click()};
 // Phone sheet
 $('legend').innerHTML=SVC_ORDER.map(v=>`<span><i style="background:${SERVICES[v].color}"></i>${SERVICES[v].label}</span>`).join('')+`<span><i style="background:${RESOLVED_COLOR}"></i>Resolved</span><span><i style="background:#2a3d4a;box-shadow:0 0 0 2px var(--red)"></i>In your zone</span>`;
 function setSheet(open){$('feed').classList.toggle('open',open);document.body.classList.toggle('sheet-open',open)}
 $('feedHead').onclick=e=>{if(e.target.closest('button'))return;if(innerWidth<=760)setSheet(!$('feed').classList.contains('open'))};
 document.querySelector('#feed .grab').onclick=()=>setSheet(!$('feed').classList.contains('open'));
+$('optUnitsMap').checked=store.get('unitsMap',true);$('optUnitsMap').onchange=()=>{store.set('unitsMap',$('optUnitsMap').checked);drawUnits()};
 $('unitsBtn').onclick=e=>{e.stopPropagation();const o=$('unitsPanel').classList.toggle('open');$('unitsBtn').classList.toggle('on',o);paintUnits()};
 $('unitsList').onclick=e=>{const b=e.target.closest('[data-unit]');if(b)showUnit(b.dataset.unit)};
 setInterval(paintUnits,60e3);
