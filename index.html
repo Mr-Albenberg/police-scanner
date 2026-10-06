@@ -184,6 +184,13 @@
     .uk{font-size:11px;color:#ffb48f;margin-top:3px}
     .upin{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;transform:translate(-11px,0);padding:3px 8px 3px 4px;border-radius:12px;background:#061019ee;border:1.5px solid var(--c);color:#eaf6fb;font:800 10.5px ui-monospace,Menlo,monospace;letter-spacing:.03em;box-shadow:0 3px 10px #000a;cursor:pointer}
     .upin i{width:14px;height:14px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px #061019,0 0 10px var(--c)}
+    .upin.dot{padding:4px;gap:0;border-radius:4px;transform:translate(-11px,0) rotate(45deg)}
+    .upin.dot i{width:10px;height:10px;border-radius:2px}
+    .upin.sel{align-items:flex-start;white-space:normal;width:max-content;max-width:240px;border-radius:10px;padding:5px 9px 6px 5px}
+    .upin.sel i{flex:none;margin-top:1px}
+    .upin .us{display:block;font-weight:600;color:#bcd3df;line-height:1.35;margin-top:2px}
+    .tag.unit.route{border-color:var(--rc,#61dcff);color:#eaf6fb;cursor:pointer}
+    .tag.unit.route b{color:var(--rc,#61dcff)}
     .tag.unit{background:#0b1e2b;border-color:#61dcff66;color:#bfefff;font-family:ui-monospace,Menlo,monospace;cursor:pointer}
     .tag.unit:hover{border-color:var(--cyan)}
     #unitsPanel{display:none;max-height:38%;overflow-y:auto;border-bottom:1px solid var(--line2);background:#06121c}
@@ -1005,6 +1012,11 @@ const aiLimitedUntil={};
 const AI_SYS=`You check speech-to-text transcripts of San Luis Obispo County, California sheriff, police and fire radio. Return JSON only.
 Input: the new transcript, words the recognizer was unsure of, recent calls on the same channel (newest last), and real SLO County street names that sound like words in the transcript (with their town).
 Output: {"text": string, "location": null | {"number": string|null, "street": string|null, "cross": string|null, "town": string|null, "place": string|null}, "confidence": "high"|"medium"|"low", "same_incident": string|null, "resolves": string|null, "plate": string|null, "vehicle": string|null, "complaint": string|null}
+This is police, sheriff, CHP, fire and ambulance radio in San Luis Obispo County. When a word is unclear, the right reading is almost always ordinary dispatch vocabulary or a real SLO County name, not an unusual English word:
+- Radio words: copy, 10-4, en route, responding, on scene, 10-97, 10-98, 10-8, Code 2/3/4, show me, RP (reporting party), subject, suspect, party, victim, involved, CP, DOB, 10-28 (vehicle registration), 10-29 (wants check), no wants, valid, suspended, 10-15 (in custody), 10-16, 11-44, 11-83/11-80/11-81 (traffic collision, unknown/major/minor injury), TC, BOL, ATL, UTL, GOA, NRR, 5150, 415, 459, 211, 242, 245, 273.5, 594, 647(f), 10851, 20002 (hit and run), 23152 (DUI), H&S, PC, VC, WMA/HMA/BMA/WFA (race, sex, adult), cover unit, stage, staging, Cal Fire, CHP, San Luis Ambulance, Medic, Engine, Truck, Battalion, Station, CMC (California Men's Colony), County Jail.
+- SLO County agencies: SLO PD, SLO Sheriff ("SO"), Cal Poly PD, CHP San Luis Obispo, Templeton CHP, Arroyo Grande, Grover Beach, Pismo Beach, Morro Bay, Paso Robles and Atascadero police, Cal Fire / SLO County Fire, Five Cities Fire.
+- Towns and areas: San Luis Obispo, Los Osos, Baywood, Morro Bay, Cayucos, Cambria, San Simeon, Atascadero, Templeton, Paso Robles, Santa Margarita, Creston, Shandon, San Miguel, Arroyo Grande, Grover Beach, Pismo Beach, Shell Beach, Oceano, Nipomo, Avila Beach, Edna Valley, See Canyon, Cuesta Grade, Cal Poly, Cuesta College, Oceano Dunes, Diablo Canyon, Hearst Castle, Lopez Lake, Santa Margarita Lake. Santa Maria, Orcutt and Guadalupe are just south, in Santa Barbara County.
+- Main roads: US 101, Highway 1, 41, 46, 58, 166, 227, Higuera, Marsh, Broad, Santa Rosa, Johnson, Foothill, Madonna, Los Osos Valley Road, Tank Farm, Orcutt Road, Prado, South Bay Boulevard, El Camino Real, Grand Avenue, Halcyon, Oak Park, Niblick, Spring Street, Vine, Theatre Drive, Main Street (Cambria, Morro Bay, Templeton).
 Rules:
 - If the call gives cross streets ("9850 San Luis, crossing Cascabel or San Gabriel"), the address is on a street that meets them: choose the candidate marked "meets ..." that sounds closest ("San Luis" → Santa Lucia Road), even over an exact-sounding street elsewhere.
 - Highways are often said as "the 58" or "the 101". A direction plus an east-west highway with no other road ("southbound from the 58") means US 101 where it meets that highway: street "US 101", cross "CA 58".
@@ -1588,7 +1600,11 @@ function drawLine(entry){
   if(entry.plate)tags.push(`<span class="tag plate" title="License plate read on the radio${entry.vehicle?': '+esc(entry.vehicle):''}"><b>${esc(entry.plate)}</b>${entry.vehicle?' '+esc(entry.vehicle):''}</span>`);
   else if(entry.vehicle&&!entry.morse)tags.push(`<span class="tag veh">${esc(entry.vehicle)}</span>`);
   if(entry.complaint&&!entry.morse){const pol=servicesOf(entry).includes('police')&&!servicesOf(entry).includes('medical');tags.push(`<span class="tag cmp" title="What was reported"><b>${pol?'VIOLATION':'REPORTED'}</b> ${esc(entry.complaint)}</span>`)}
-  for(const k of entry.units||[]){const U=UNITS.get(k);tags.push(`<span class="tag unit" data-unit="${esc(k)}" title="${esc((U&&U.status?'Last status: '+U.status+'. ':'')+'Tap to see every call from this unit')}">${esc((U&&U.label)||UNIT_LABEL.get(k)||k)}</span>`)}
+  const enRoute=new Set();
+  for(const{k,trip}of entry.trips||[]){if(!(entry.units||new Set()).has(k))continue;enRoute.add(k);const U=UNITS.get(k),col=SERVICES[unitSvc(k)].color;
+    const mins=trip.route?Math.max(1,Math.round(trip.route.dur*(trip.code3?0.8:1)/60)):null;
+    tags.push(`<span class="tag unit route" data-unit="${esc(k)}" style="--rc:${col}" title="${esc('Estimated from radio traffic, not GPS. Tap to see the likely route on the map'+(U&&U.status?'. Last status: '+U.status:''))}"><b>${esc((U&&U.label)||UNIT_LABEL.get(k)||k)} EN ROUTE</b>${trip.fromLabel?` from ${esc(trip.fromLabel)}`:' · start unknown'}${mins?` · ~${mins} min drive`:''}</span>`)}
+  for(const k of entry.units||[]){if(enRoute.has(k))continue;const U=UNITS.get(k);tags.push(`<span class="tag unit" data-unit="${esc(k)}" title="${esc((U&&U.status?'Last status: '+U.status+'. ':'')+'Tap to see every call from this unit')}">${esc((U&&U.label)||UNIT_LABEL.get(k)||k)}</span>`)}
   if(entry.zone&&!resolved)tags.push('<span class="tag al">IN YOUR ZONE</span>');
   else if(entry.hitAlert&&!resolved)tags.push(`<span class="tag al" title="${esc(entry.hits.map(h=>h.name).join(', '))}">WATCHED STREET</span>`);
   if(resolved)tags.push('<span class="tag ok">✓ RESOLVED</span>');
@@ -1627,7 +1643,25 @@ function callDetails(text){
   return out;
 }
 const ADDR_TAIL=String.raw`(?:north|south|east|west|n|s|e|w)?\.?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+(?:street|st|road|rd|avenue|ave|drive|dr|lane|ln|way|court|ct|place|pl|boulevard|blvd|circle|cir|terrace|trail|loop|parkway|pkwy)\b`;
+// Radio codes spoken as words or with a space ("ten ninety-seven", "10 97", "eleven eighty-three", "four fifteen") written the way dispatch writes them
+const NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
+const NUMW_RE=String.raw`(?:(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)`;
+const NOT_QTY=String.raw`(?![\s-]*(?:[ap]\.?m\b|o'?clock|minutes?|mins?|hours?|years?|yoa|feet|foot|miles?|percent|degrees|dollars|units|people|subjects))`;
+const numWords=s=>s.toLowerCase().split(/[\s-]+/).reduce((n,w)=>n+(NUMW[w]||0),0);
+const UNIT_BEFORE=/\b(medic|engine|battalion|truck|rescue|squad|car|unit|adam|boy|charles|david|edward|frank|george|henry|ida|john|king|lincoln|mary|nora|ocean|paul|queen|robert|sam|tom|union|victor|william|x-?ray|young|zebra|station|highway|hwy|route|room|bed|apartment|apt|suite|space|gate|number|at|by|until|around|about|after|before)\s*$/i;
+const PENAL_SPOKEN={'four fifteen':'415','four fifty-nine':'459','four fifty nine':'459','fifty-one fifty':'5150','fifty one fifty':'5150','five one fifty':'5150','two eleven':'211','two forty-five':'245','two forty five':'245','two forty-three':'243','two forty three':'243','four eighty-eight':'488','four eighty eight':'488','ten eight fifty-one':'10851'};
+function spokenCodes(t){
+  // "ten four", "ten ninety-seven", "eleven eighty-three" → 10-4, 10-97, 11-83
+  t=t.replace(new RegExp(String.raw`\b(ten|eleven)[\s-]+(${NUMW_RE})\b${NOT_QTY}`,'gi'),(m,a,b,off,str)=>{if(UNIT_BEFORE.test(str.slice(0,off)))return m;const n=numWords(b);if(!n||n>99)return m;return(a.toLowerCase()==='ten'?'10-':'11-')+n});
+  // "10 97", "11 83" written with a space (not after a unit name: "Medic 10 4 units")
+  t=t.replace(/\b(10|11)\s(\d{1,2})\b(?![\s-]*(?:[ap]\.?m\b|minutes?|mins?|hours?|years?|yoa|feet|foot|miles?|o'?clock|units|people|subjects|percent|degrees))/gi,(m,a,b,off,str)=>UNIT_BEFORE.test(str.slice(0,off))?m:`${a}-${b}`);
+  // penal and vehicle codes said as words, unless it's a time ("at four fifteen")
+  for(const[w,c]of Object.entries(PENAL_SPOKEN))t=t.replace(new RegExp(String.raw`\b${w.replace(/ /g,'[\\s-]')}\b${NOT_QTY}`,'gi'),(m,off,str)=>UNIT_BEFORE.test(str.slice(0,off))?m:c);
+  // letters spelled out for agencies
+  return t.replace(/\bC\.?\s?H\.?\s?P\b\.?/g,'CHP').replace(/\bR\.\s?P\.(?=\s|$|,)/g,'RP').replace(/\bcal[\s-]?fire\b/gi,'Cal Fire');
+}
 function codeFix(t){
+  t=spokenCodes(t);
   t=t.replace(/\bD\.?\s?O\.?\s?V\b/g,'DOB').replace(/\bdate of birth\b/gi,'DOB'); // "DOV" is how "DOB" (date of birth) often comes through
   // a code-looking number said right before a street is a house number ("10-95, 10-95, West McCoy Lane" = 1095)
   t=t.replace(new RegExp(String.raw`\b(1[01])-(\d{2})((?:,?\s*\1-\2)*,?\s+)(?=${ADDR_TAIL})`,'gi'),(m,a,b,rest)=>a+b+rest.replace(new RegExp(a+'-'+b,'g'),a+b));
@@ -1869,11 +1903,23 @@ function trackUnits(entry){
     if(!geo)return;
     if(onScene){T.at={...geo,t};T.trip=null;return}
     if(T.trip&&dist([T.trip.to.lat,T.trip.to.lon],[geo.lat,geo.lon])<150)return; // already heading there
-    const from=unitWhere(T,t);if(T.trip&&!T.trip.route&&T.trip.to)T.at={...T.trip.to,t:T.trip.start};
-    T.trip={to:geo,start:t,from,code3:/\bcode ?3\b/i.test(entry.text),route:null};
-    if(from&&dist([from.lat,from.lon],[geo.lat,geo.lon])>250)roadRoute(from,geo).then(r=>{if(T.trip&&T.trip.to===geo){T.trip.route=r;drawUnits()}});
+    const from=unitWhere(T,t);
+    // where it's coming from, in words: the last place it was heard at, or partway to its last call
+    const fromLabel=!from?null:T.trip?(from.f>=1||from.noStart?T.trip.to.label:`on the way to ${T.trip.to.label}`):T.at?T.at.label:null;
+    if(T.trip&&!T.trip.route&&T.trip.to)T.at={...T.trip.to,t:T.trip.start};
+    const trip={to:geo,start:t,from,fromLabel,code3:/\bcode ?3\b/i.test(entry.text),route:null,entry};T.trip=trip;
+    entry.trips=(entry.trips||[]).filter(x=>x.k!==k).concat([{k,trip}]);
+    if(from&&dist([from.lat,from.lon],[geo.lat,geo.lon])>250)roadRoute(from,geo).then(r=>{trip.route=r;if(T.trip===trip)drawUnits();drawLine(entry)});
   });
   drawUnits();
+}
+// On the map each unit is a plain colored dot; tap it (or its name in a call) to see who it is, where it's headed and the likely route.
+let selUnit=null;
+const unitName=k=>(UNITS.get(k)||{}).label||UNIT_LABEL.get(k)||k;
+function unitStatusLine(T,p,now){
+  if(T.trip&&p.f<1&&now-T.trip.start<20*60e3){const left=T.trip.route?` · ~${Math.max(1,Math.round(p.left/60e3))} min left`:'';
+    return`en route${T.trip.code3?' Code 3':''} to ${T.trip.to.label}${T.trip.fromLabel?` from ${T.trip.fromLabel}`:''}${left}`}
+  const at=T.trip?T.trip.to:T.at;return at?`at ${at.label}`:'';
 }
 function drawUnits(){
   unitLayer.clearLayers();if(!unitsMapOn()||!MAP_OK)return;
@@ -1881,20 +1927,29 @@ function drawUnits(){
   for(const[k,T]of UNIT_TRACK){
     if(now-(T.last||0)>2*36e5)continue;
     const p=unitWhere(T,now);if(!p)continue;
-    const col=SERVICES[unitSvc(k)].color,label=(UNITS.get(k)||{}).label||UNIT_LABEL.get(k)||k;
-    if(T.trip&&T.trip.route&&p.f<1)L.polyline(T.trip.route.coords,{color:col,weight:3,opacity:.75,dashArray:'6 6',interactive:false}).addTo(unitLayer);
-    const eta=T.trip&&T.trip.route&&p.f<1?` · ~${Math.max(1,Math.round(p.left/60e3))} min`:T.trip&&!T.trip.route&&now-T.trip.start<20*60e3?' · en route':'';
-    const m=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',iconSize:null,iconAnchor:[0,11],html:`<div class="upin" style="--c:${col}"><i></i>${esc(label)}${eta}</div>`}),zIndexOffset:800,keyboard:false,
-      title:`${label}: estimated from radio traffic, not GPS${T.trip&&!T.trip.route?' (starting point unknown, shown at the call)':''}`}).addTo(unitLayer);
+    const col=SERVICES[unitSvc(k)].color,label=unitName(k),sel=k===selUnit;
+    if(T.trip&&T.trip.route&&p.f<1)L.polyline(T.trip.route.coords,sel?{color:col,weight:4,opacity:.95,dashArray:'8 6',interactive:false}:{color:col,weight:2.5,opacity:.6,dashArray:'4 7',interactive:false}).addTo(unitLayer);
+    const st=unitStatusLine(T,p,now);
+    const html=sel?`<div class="upin sel" style="--c:${col}"><i></i><div>${esc(label)}${st?`<span class="us">${esc(st)}</span>`:''}</div></div>`:`<div class="upin dot" style="--c:${col}"><i></i></div>`;
+    const m=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',iconSize:null,iconAnchor:sel?[0,11]:[2,9],html}),zIndexOffset:sel?900:800,keyboard:false,
+      title:`${label}${st?' · '+st:''} (estimated from radio traffic, not GPS${T.trip&&!T.trip.route&&T.trip.fromLabel==null?'; starting point unknown, shown at the call':''})`}).addTo(unitLayer);
     m.on('click',()=>showUnit(k));
   }
 }
+function selectUnit(k,fit){
+  selUnit=k;drawUnits();const T=UNIT_TRACK.get(k);if(!T||!fit||!unitsMapOn()||!MAP_OK)return;
+  const p=unitWhere(T,Date.now());
+  if(T.trip&&T.trip.route&&p&&p.f<1)map.fitBounds(L.latLngBounds(T.trip.route.coords),{maxZoom:16,...fitPad()});
+  else if(p)map.setView([p.lat,p.lon],Math.max(map.getZoom(),14));
+}
+map.on('click',()=>{if(selUnit){selUnit=null;drawUnits()}});
 setInterval(()=>{if(UNIT_TRACK.size)drawUnits()},5000);
-function showUnit(k){
+function showUnit(k,fromCall){
   const U=UNITS.get(k);if(!U)return;
   for(const l of lines)if(l.el)l.el.classList.toggle('related',U.calls.includes(l));focusedUnit=k;
-  const first=U.calls.find(e=>e.el&&e.el.isConnected);if(first)first.el.scrollIntoView({block:'center',behavior:'smooth'});
-  if(U.inc&&!U.inc.gone){U.inc.marker.openPopup()}
+  if(!fromCall){const first=U.calls.find(e=>e.el&&e.el.isConnected);if(first)first.el.scrollIntoView({block:'center',behavior:'smooth'})}
+  if(UNIT_TRACK.has(k)&&unitsMapOn()){selectUnit(k,true);if(innerWidth<=760)setSheet(false)}
+  else if(U.inc&&!U.inc.gone){U.inc.marker.openPopup()}
 }
 const CLIP_KEEP=30*60e3;
 const ClipDB={db:null,
@@ -1941,7 +1996,7 @@ function reveal(entry){
     entry.el=document.createElement('div');lines.push(entry);
     entry.el.addEventListener('click',e=>{
       if(e.target.closest('.play')){playClip(entry);return}
-      {const u=e.target.closest('.tag.unit');if(u){e.stopPropagation();showUnit(u.dataset.unit);return}}
+      {const u=e.target.closest('.tag.unit');if(u){e.stopPropagation();showUnit(u.dataset.unit,true);return}}
       if(!entry.inc||entry.inc.gone)return;if(entry.inc.line)map.fitBounds(L.latLngBounds(entry.inc.line.flat()),{maxZoom:16,...fitPad()});else map.setView([entry.inc.lat,entry.inc.lon],Math.max(map.getZoom(),15));entry.inc.marker.openPopup();focusIncident(entry.inc,false);if(innerWidth<=760)setSheet(false)});
     const box=$('transcript'),atTop=box.scrollTop<40;box.prepend(entry.el);if(atTop)box.scrollTop=0;
     while(box.children.length>400)box.lastChild.remove();
@@ -2215,10 +2270,12 @@ function asr(audio,prompt){return new Promise((res,rej)=>{const id=++reqId;pendi
 // Prime the model with how SLO dispatch sounds (written like earlier radio traffic)
 let currentPrompt='';
 function rebuildPrompt(){
-  const near=watchStreets.slice(0,8).map(w=>displayBase(w.base)||w.name);
+  // Whisper only reads about the last 224 tokens of this, so it's kept short: police radio wording and SLO County names,
+  // then your nearby streets, then the last call (most useful for names that come up again)
+  const near=watchStreets.slice(0,6).map(w=>displayBase(w.base)||w.name);
   const local=near.length?` Units near ${near.join(', ')}.`:'';
-  const prev=lines.filter(l=>l.final&&Date.now()-l.time<10*60e3).slice(-2).map(l=>l.text).join(' ').split(' ').slice(-45).join(' ');
-  currentPrompt=`San Luis units, 415 at 1200 Higuera Street, two subjects yelling. Copy, en route. 11-83 at Foothill and Santa Rosa. Paso units, 459 alarm, 1520 Niblick Road. Morro Bay, 10-15 at Quintana and Kennedy Way. Grover Beach, Arroyo Grande, Pismo Beach, Atascadero, Los Osos, Nipomo, Templeton. Madonna Road, Los Osos Valley Road, Tank Farm, Broad Street, El Camino Real, Grand Avenue.${local}${prev?' '+prev:''}`;
+  const prev=lines.filter(l=>l.final&&Date.now()-l.time<10*60e3).slice(-2).map(l=>l.text).join(' ').split(' ').slice(-28).join(' ');
+  currentPrompt=`San Luis units, 415 at 1200 Higuera Street, RP reports two subjects yelling. Copy, en route Code 3. 10-97. Code 4, 10-8. 11-83 at Foothill and Santa Rosa, CHP and Cal Fire responding. Paso units, 459 alarm, Niblick Road. Medic 7-1, Engine 21, French Hospital, Sierra Vista. 10-28, 10-29, DOB, no wants, 10-15, 23152, 5150. Morro Bay, Grover Beach, Arroyo Grande, Pismo Beach, Atascadero, Los Osos, Nipomo, Templeton, Cambria, Cal Poly. Madonna Road, Los Osos Valley Road, Tank Farm, Broad Street.${local}${prev?' '+prev:''}`;
   PROMPT_WORDS=new Set(wordsOf(currentPrompt).filter(w=>!COMMON_EN.has(w)&&w.length>2));
 }
 rebuildPrompt();
