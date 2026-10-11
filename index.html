@@ -378,6 +378,14 @@
     </div>
   </dialog>
 
+  <dialog id="downDlg" aria-label="Not working right now">
+    <div class="modal-head">NOT WORKING RIGHT NOW<button type="button" data-close aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <p style="font-size:15px;color:#cfe3ec;line-height:1.55;margin:0 0 10px">Live radio and transcripts aren't working right now.</p>
+      <p style="font-size:15px;color:#cfe3ec;line-height:1.55;margin:0 0 16px">Reason: <b style="color:var(--orange)">Fuck Broadcastify.</b></p>
+      <button type="button" class="fit" data-close>OK</button>
+    </div>
+  </dialog>
   <dialog id="setupDlg" aria-label="Turn on transcripts">
     <div class="modal-head">TURN ON FAST, ACCURATE TRANSCRIPTS<button type="button" data-close aria-label="Close">×</button></div>
     <div class="modal-body">
@@ -2738,6 +2746,7 @@ if(saved)map.fitBounds(meCircle.getBounds(),{maxZoom:16,...fitPad()});
 gpuCheck.then(paintModels);
 aiStatus(engine()==='device'?'ON-DEVICE':sttKey()?'READY · '+PROVIDERS[engine()].name.split(' ·')[0]:'NEEDS KEY');
 setTimeout(loadStreetData,100);
+try{$('downDlg').showModal()}catch{}
 </script>
 </body>
 </html>
