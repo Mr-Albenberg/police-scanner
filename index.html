@@ -2394,12 +2394,12 @@ const POPOUT='https://www.broadcastify.com/listen/feed/popout.php?feedId='+((STR
 const TAB={stream:null,win:null,node:null,src:null,n:0};
 function tabGuide(step){
   const can=!!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia);
-  if(!can){showErr('Broadcastify stopped letting other websites play its feeds (July 2026). On a computer, open this page in Chrome, Edge or Opera to listen through Broadcastify\'s player; phones can\'t share another tab\'s sound.',['OPEN ON BROADCASTIFY',()=>window.open(FEED_PAGE,'_blank','noopener')]);return}
+  if(!can){showErr('Broadcastify now blocks other websites from reading its radio stream. On a computer, open this page in Chrome, Edge or Opera to listen through Broadcastify\'s player; phones can\'t share another tab\'s sound.',['OPEN ON BROADCASTIFY',()=>window.open(FEED_PAGE,'_blank','noopener')]);return}
   if(step==='share'||(TAB.win&&!TAB.win.closed)){
     showErr('Step 2: press play in the Broadcastify tab, then press SHARE ITS SOUND. In the box that opens, pick the Broadcastify tab and turn on "Also share tab audio".',['SHARE ITS SOUND',shareTab]);
     const b=$('errbar').querySelector('button');if(b){const again=document.createElement('button');again.className='secondary';again.textContent='REOPEN PLAYER';again.onclick=()=>{TAB.win=window.open(POPOUT,'_blank');tabGuide('share')};b.after(again)}
     return}
-  showErr('Broadcastify stopped letting other websites play its feeds (July 2026). You can still listen through its own player and this page will transcribe it. Step 1: open the player.',['OPEN BROADCASTIFY PLAYER',()=>{TAB.win=window.open(POPOUT,'_blank');tabGuide('share')}]);
+  showErr('Broadcastify now blocks other websites from reading its radio stream. You can still listen through its own player and this page will transcribe it. Step 1: press OPEN BROADCASTIFY PLAYER (a SHARE ITS SOUND button appears here next).',['OPEN BROADCASTIFY PLAYER',()=>{TAB.win=window.open(POPOUT,'_blank');tabGuide('share')}]);
 }
 async function shareTab(){
   let stream;
