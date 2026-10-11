@@ -633,7 +633,14 @@ const PROMPT_STREETS=['Higuera','Marsh','Santa Rosa','Foothill','Broad','Johnson
 const $=id=>document.getElementById(id);
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}},del(k){try{localStorage.removeItem(k)}catch{}}};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// Timers that keep their pace in a background tab. Browsers slow a silent background tab's timers to about once a
+// minute, which would hold every paced lookup (one per second) for minutes; a small worker's timers aren't slowed.
+const BGT=(()=>{try{const w=new Worker(URL.createObjectURL(new Blob(["onmessage=e=>setTimeout(()=>postMessage(e.data),e.data[1])"],{type:'text/javascript'})));
+  const cbs=new Map();let id=0;w.onmessage=e=>{const f=cbs.get(e.data[0]);cbs.delete(e.data[0]);f&&f()};
+  return{set(f,ms){const k=++id;cbs.set(k,f);w.postMessage([k,Math.max(0,ms|0)]);return k},clear(k){cbs.delete(k)}}}catch{return null}})();
+const later=(f,ms)=>BGT?BGT.set(f,ms):setTimeout(f,ms);
+const cancelLater=k=>{if(BGT)BGT.clear(k);clearTimeout(k)};
+const sleep=ms=>new Promise(r=>later(r,ms));
 const fmtTime=d=>d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\"]/g,'\\$&');
 const IS_PHONE=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Macintosh/.test(navigator.userAgent));
@@ -2132,7 +2139,7 @@ function noteSegments(ms,durs){
 const soundSynced=()=>false;
 function schedule(entry){
   const wait=(entry.playAt||0)-Date.now();
-  if(!entry.revealed&&wait>40){clearTimeout(entry.timer);entry.timer=setTimeout(()=>reveal(entry),wait);return}
+  if(!entry.revealed&&wait>40){cancelLater(entry.timer);entry.timer=later(()=>reveal(entry),wait);return}
   reveal(entry);
 }
 
@@ -2343,7 +2350,7 @@ const queue=[];let pumping=false;
 function pump(){
   if(engine()!=='device'){
     if(!cloudReady()||cloudBlocked)return;
-    if(Date.now()<cloudPause){setTimeout(pump,cloudPause-Date.now()+50);return}
+    if(Date.now()<cloudPause){later(pump,cloudPause-Date.now()+50);return}
     if(queue.length>8)queue.splice(0,queue.length-8);
     while(inflight<3&&queue.length){const item=queue.shift();inflight++;handleCloud(item).finally(()=>{inflight--;if(!inflight&&!queue.length)aiStatus('LISTENING · '+PROVIDERS[engine()].name.split(' ·')[0]);pump()})}
     return;
@@ -2404,7 +2411,7 @@ function tabGuide(step){
 async function shareTab(){
   let stream;
   try{stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{max:320},height:{max:240},frameRate:{max:1}},
-    audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,suppressLocalAudioPlayback:false},
+    audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,suppressLocalAudioPlayback:true},
     preferCurrentTab:false,selfBrowserSurface:'exclude',surfaceSwitching:'include',systemAudio:'include'})}
   catch(e){if(e&&e.name==='NotAllowedError'){tabGuide('share');return}showErr('Couldn\'t share the tab: '+(e&&e.message||e));return}
   if(!stream.getAudioTracks().length){stream.getTracks().forEach(t=>t.stop());
@@ -2414,22 +2421,49 @@ async function shareTab(){
 async function startTabCapture(stream){
   stopTabCapture();
   const c=getCtx();if(c.resume)await c.resume();
-  TAB.stream=stream;TAB.src=c.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+  const track=stream.getAudioTracks()[0];
+  TAB.stream=stream;TAB.src=c.createMediaStreamSource(new MediaStream([track]));
   await ensureTapModule(c);
-  const tap=new AudioWorkletNode(c,'tap'),sink=c.createGain();sink.gain.value=0; // the Broadcastify tab already plays the sound; this page only listens
-  TAB.src.connect(tap).connect(sink).connect(c.destination);TAB.node=tap;TAB.n=0;
-  tap.port.onmessage=e=>{if(!listening||!TAB.stream)return;const a=e.data;
-    let pk=0;for(let i=0;i<a.length;i+=4)pk=Math.max(pk,Math.abs(a[i]));if(++TAB.n%6===0)$('lvl').style.width=Math.min(100,pk*250)+'%';
-    vad(a,c.sampleRate,null,Date.now());if(TAB.n%40===0)flushPartial(c.sampleRate)};
+  // same cleanup as the direct stream had: keep the voice band (this also lets the sound be brought down to 16 kHz cleanly)
+  const hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=220;
+  const lp1=c.createBiquadFilter();lp1.type='lowpass';lp1.frequency.value=3600;const lp2=c.createBiquadFilter();lp2.type='lowpass';lp2.frequency.value=3600;
+  const tap=new AudioWorkletNode(c,'tap'),sink=c.createGain();sink.gain.value=0;
+  TAB.src.connect(hp).connect(lp1).connect(lp2).connect(tap).connect(sink).connect(c.destination);TAB.node=tap;TAB.extra=[hp,lp1,lp2,sink];
+  // Play the sound from this page when the browser could mute the Broadcastify tab: the sound and the transcript stay together,
+  // your volume and mute work, and a page that's playing sound is never slowed down in the background.
+  TAB.local=!!(track.getSettings&&track.getSettings().suppressLocalAudioPlayback);
+  TAB.out=c.createGain();TAB.out.gain.value=TAB.local&&$('optSound').checked?1:0;TAB.src.connect(TAB.out).connect(c.destination);
+  const sr=c.sampleRate,R=sr/16000;Object.assign(TAB,{n:0,pos:0,prev:0,acc:new Float32Array(0),hist:[],gain:4,p30:0.002});
+  tap.port.onmessage=e=>{if(!listening||!TAB.stream)return;
+    // bring it down to 16 kHz (the band is already limited, so straight interpolation is clean)
+    const a=e.data,out=[];let x=TAB.pos;while(x<a.length-1){const i=Math.floor(x),f=x-i;out.push((i<0?TAB.prev:a[i])*(1-f)+a[i+1]*f);x+=R}
+    TAB.pos=x-a.length;TAB.prev=a[a.length-1];
+    const merged=new Float32Array(TAB.acc.length+out.length);merged.set(TAB.acc);merged.set(out,TAB.acc.length);
+    let o=0;
+    for(;o+512<=merged.length;o+=512){const fr=merged.subarray(o,o+512);
+      let q=0;for(let k=0;k<512;k++)q+=fr[k]*fr[k];const rms=Math.sqrt(q/512);
+      TAB.hist.push(rms);if(TAB.hist.length>940)TAB.hist.shift(); // ~30 s of history
+      if(++TAB.n%16===0&&TAB.hist.length>=30){const h=TAB.hist.slice().sort((p,q)=>p-q);TAB.p30=Math.max(1e-5,h[Math.floor(h.length*0.3)]);
+        // even out the level: calls end up about as loud as the direct stream was, whatever the player's volume slider says
+        const loudest=h[Math.floor(h.length*0.98)]||TAB.p30;const want=Math.min(12,Math.max(0.5,0.12/Math.max(loudest,1e-4)));TAB.gain+=(want-TAB.gain)*0.3}
+      const g=TAB.gain,frame=new Float32Array(512);for(let k=0;k<512;k++)frame[k]=fr[k]*g;
+      floor=Math.max(1e-4,TAB.p30*g); // the hiss level measured from the real audio, not a guess
+      vad(frame,16000,null,Date.now());
+      if(TAB.n%6===0){let pk=0;for(let k=0;k<512;k+=4)pk=Math.max(pk,Math.abs(frame[k]));$('lvl').style.width=Math.min(100,pk*250)+'%'}
+      if(TAB.n%60===0)flushPartial(16000);
+    }
+    TAB.acc=merged.slice(o)};
   for(const t of stream.getTracks())t.addEventListener('ended',()=>{if(TAB.stream!==stream)return;stopTabCapture();if(listening){state('TAB SHARING STOPPED');showErr('Sharing the Broadcastify tab stopped, so calls aren\'t being transcribed.',['SHARE AGAIN',shareTab])}});
   SEG.running=false;
   if(!listening){listening=true;$('start').textContent='STOP';$('start').disabled=false;keepAwake(true)}
-  const bar=$('errbar');bar.style.display='none';
+  $('errbar').style.display='none';
   state('LIVE · VIA BROADCASTIFY TAB',true);
   if(engine()!=='device'&&!sttKey())openSetup();else aiStatus('LISTENING · '+(engine()==='device'?modelKey.toUpperCase():PROVIDERS[engine()].name.split(' ·')[0]));
 }
 function stopTabCapture(){
   if(TAB.node){try{TAB.node.port.onmessage=null;TAB.node.disconnect()}catch{}TAB.node=null}
+  for(const n of TAB.extra||[])try{n.disconnect()}catch{}TAB.extra=null;
+  if(TAB.out){try{TAB.out.disconnect()}catch{}TAB.out=null}
   if(TAB.src){try{TAB.src.disconnect()}catch{}TAB.src=null}
   if(TAB.stream){TAB.stream.getTracks().forEach(t=>t.stop());TAB.stream=null}
 }
@@ -2609,7 +2643,7 @@ async function play(){
 }
 function stop(){listening=false;SEG.running=false;stopTabCapture();pbStop();stopSound();keepAwake(false);state('STOPPED');$('start').textContent='START LISTENING';$('lvl').style.width='0';}
 $('start').onclick=()=>listening?stop():play();
-$('optSound').onchange=()=>{store.set('sound',$('optSound').checked);if(!listening)return;if($('optSound').checked){if(captured)startSound().catch(()=>{});else pbStart()}else{pbStop();if(!captured)stopSound();state('LIVE · MUTED',true)}};
+$('optSound').onchange=()=>{store.set('sound',$('optSound').checked);if(TAB.out)TAB.out.gain.value=TAB.local&&$('optSound').checked?1:0;if(!listening)return;if(TAB.stream){state($('optSound').checked||!TAB.local?'LIVE · VIA BROADCASTIFY TAB':'LIVE · MUTED',true);return}if($('optSound').checked){if(captured)startSound().catch(()=>{});else pbStart()}else{pbStop();if(!captured)stopSound();state('LIVE · MUTED',true)}};
 $('optDouble').onchange=()=>store.set('double',$('optDouble').checked);
 $('optLoud').checked=store.get('loud',true);$('optLoud').onchange=()=>store.set('loud',$('optLoud').checked);
 $('optSpeak').checked=store.get('speak2',false);$('optSpeak').onchange=()=>store.set('speak2',$('optSpeak').checked);
