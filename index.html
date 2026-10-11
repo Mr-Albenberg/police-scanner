@@ -2373,12 +2373,25 @@ async function pumpDevice(){
 /* ================================================================
    AUDIO IN: read the stream's chunks directly and decode them
    ================================================================ */
-const SEG={running:false,seq:-1,carry:null,fails:0,ok:0};
+const SEG={running:false,seq:-1,carry:null,fails:0,ok:0,blocked:false};
+// Broadcastify refuses the stream (since July 2026 it no longer lets other websites play its feeds): say so plainly
+const FEED_PAGE='https://www.broadcastify.com/listen/feed/'+((STREAM.match(/\/feed\/(\d+)/)||[])[1]||'');
+// 'ok', 'refused' (the server answers but won't share the stream with this page) or 'down'
+async function probeStream(){
+  try{const r=await fetch(STREAM,{cache:'no-store',signal:timeoutSignal(8000)});return r.status===401||r.status===403?'refused':r.ok?'ok':'down'}
+  catch{try{await fetch(STREAM,{mode:'no-cors',cache:'no-store',signal:timeoutSignal(8000)});return'refused'}catch{return'down'}}
+}
+function feedBlocked(){
+  SEG.blocked=true;stopSound();state('STREAM BLOCKED');aiStatus('NO AUDIO');
+  showErr('Broadcastify is refusing the radio stream. In July 2026 it stopped letting other websites play its feeds, so this page can\'t hear the radio in any browser right now.',['OPEN ON BROADCASTIFY',()=>window.open(FEED_PAGE,'_blank','noopener')]);
+}
 async function segmentLoop(){
   const base=STREAM.slice(0,STREAM.lastIndexOf('/')+1);
   while(SEG.running){
     try{
-      const pl=await (await fetch(STREAM,{cache:'no-store',signal:timeoutSignal(10000)})).text();
+      const plr=await fetch(STREAM,{cache:'no-store',signal:timeoutSignal(10000)});
+      if(plr.status===401||plr.status===403){SEG.running=false;feedBlocked();return}
+      const pl=await plr.text();
       const ms=+(pl.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/)||[])[1]||0;
       const lines_=pl.split('\n').map(s=>s.trim()),uris=[],durs=[];
       for(let i=0;i<lines_.length;i++){if(lines_[i].startsWith('#EXTINF:'))durs.push(parseFloat(lines_[i].slice(8))||8);else if(lines_[i]&&!lines_[i].startsWith('#'))uris.push(lines_[i])}
@@ -2390,7 +2403,9 @@ async function segmentLoop(){
         const ts=new Uint8Array(await (await fetch(new URL(uris[i],base).href,{signal:timeoutSignal(15000)})).arrayBuffer());
         SEG.seq=seq;await processSegment(ts,seq);
       }
-    }catch(e){console.warn('segment',e);if(SEG.running&&++SEG.fails>=3&&!SEG.ok){SEG.running=false;startCaptureFallback();return}}
+    }catch(e){console.warn('segment',e);
+      if(SEG.running&&!SEG.ok&&SEG.fails===0&&await probeStream()==='refused'){SEG.running=false;feedBlocked();return}
+      if(SEG.running&&++SEG.fails>=3&&!SEG.ok){SEG.running=false;startCaptureFallback();return}}
     await sleep(1000); // check for a new chunk every second
   }
 }
@@ -2461,7 +2476,7 @@ function enqueue(bufs,sr,t,wall,meta={}){
 }
 let captured=false;
 async function startCaptureFallback(){
-  if(captured)return;
+  if(captured||SEG.blocked)return;
   try{
     if(audio.paused){$('optSound').checked=true;await startSound()}
     const c=getCtx(),src=c.createMediaElementSource(audio);src.connect(c.destination);
@@ -2469,7 +2484,11 @@ async function startCaptureFallback(){
     await c.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET],{type:'text/javascript'})));
     const tap=new AudioWorkletNode(c,'tap'),sink=c.createGain();sink.gain.value=0;src.connect(tap).connect(sink).connect(c.destination);
     tap.port.onmessage=e=>vad(e.data,c.sampleRate,null,Date.now());captured=true;
-  }catch(e){showErr('This browser can play the radio but can\'t transcribe it. Try Chrome or Safari.')}
+  }catch(e){if(SEG.blocked)return;
+    // find out whether it's the stream or the browser before blaming either
+    const st=await probeStream();
+    if(st==='refused'){feedBlocked();return}
+    showErr(st==='ok'?'This browser can play the radio but can\'t read it for transcribing. Try Chrome, Edge, Opera or Safari, and turn off extensions that block audio.':'Couldn\'t reach the radio stream. The feed may be down; try again in a minute.')}
 }
 
 /* ================================================================
