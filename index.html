@@ -269,6 +269,64 @@
   </style>
 </head>
 <body>
+  <style>
+    .auth-gate{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;background:radial-gradient(circle at 50% 25%,#0a1c2b,var(--ink));overflow:auto}
+    .auth-gate[hidden]{display:none}
+    .auth-card{width:min(440px,100%);background:#091522;border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 100px #000;padding:22px 20px;max-height:calc(100% - 20px);overflow:auto}
+    .auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:16px;color:var(--cyan);font-weight:850;letter-spacing:.12em;font-size:13px}
+    .auth-brand img{height:30px;width:auto}
+    .auth-view{display:flex;flex-direction:column;gap:11px}
+    .auth-view[hidden]{display:none}
+    .auth-title{font-size:12px;font-weight:850;letter-spacing:.14em;color:var(--text)}
+    .auth-note{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+    .auth-lbl{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--muted);margin:5px 0 -4px;display:flex;justify-content:space-between;gap:8px}
+    .auth-lbl a{color:var(--cyan);text-decoration:none;font-weight:800}
+    .auth-err{color:var(--red);font-size:12px;font-weight:700;display:none;line-height:1.45}
+    .auth-err.show{display:block}
+    .auth-err.info{color:var(--muted)}
+    .auth-links{display:flex;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap}
+    .auth-links .linkbtn{padding:0}
+    #authGate button[type=submit]{width:100%;min-height:46px;font-size:12px;margin-top:4px}
+  </style>
+  <div id="authGate" class="auth-gate" hidden>
+    <div class="auth-card">
+      <div class="auth-brand"><img src="icon-192.png" alt="" width="30" height="30"><span>DISPATCH WATCH</span></div>
+
+      <form id="authLoginForm" class="auth-view">
+        <div class="auth-title">SIGN IN</div>
+        <input id="liUser" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false">
+        <input id="liPass" type="password" placeholder="Password" autocomplete="current-password">
+        <div class="auth-err" id="liErr"></div>
+        <button type="submit" id="liBtn">SIGN IN</button>
+        <div class="auth-links">
+          <button type="button" class="linkbtn" data-auth-view="signup">Create an account</button>
+          <button type="button" class="linkbtn auth-guest">Continue as guest</button>
+        </div>
+      </form>
+
+      <form id="authSignupForm" class="auth-view" hidden>
+        <div class="auth-title">CREATE ACCOUNT</div>
+        <p class="auth-note">Accounts use your own API keys so the shared keys don't run out. The Groq and Gemini keys are required.</p>
+        <input id="suUser" type="text" placeholder="Username (3–32 chars)" autocomplete="username" autocapitalize="none" spellcheck="false">
+        <input id="suEmail" type="email" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false">
+        <input id="suPass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password">
+        <label class="auth-lbl" for="suGroq"><span>Groq key · required</span><a href="https://console.groq.com/keys" target="_blank" rel="noopener">get a free key</a></label>
+        <input id="suGroq" type="password" placeholder="gsk_…" autocomplete="off" spellcheck="false">
+        <label class="auth-lbl" for="suGemini"><span>Gemini key · required</span><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">get a free key</a></label>
+        <input id="suGemini" type="password" placeholder="AI…" autocomplete="off" spellcheck="false">
+        <label class="auth-lbl" for="suDeepgram"><span>Deepgram key · optional</span><a href="https://console.deepgram.com/" target="_blank" rel="noopener">get a key</a></label>
+        <input id="suDeepgram" type="password" placeholder="optional" autocomplete="off" spellcheck="false">
+        <label class="auth-lbl" for="suOpenai"><span>OpenAI key · optional</span><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">get a key</a></label>
+        <input id="suOpenai" type="password" placeholder="optional" autocomplete="off" spellcheck="false">
+        <div class="auth-err" id="suErr"></div>
+        <button type="submit" id="suBtn">CREATE ACCOUNT</button>
+        <div class="auth-links">
+          <button type="button" class="linkbtn" data-auth-view="login">I already have an account</button>
+          <button type="button" class="linkbtn auth-guest">Continue as guest</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div id="map"></div>
   <div id="zoneEdge" aria-hidden="true"></div>
 
@@ -333,6 +391,13 @@
   <dialog id="settingsDlg" aria-label="Settings">
     <div class="modal-head">SETTINGS<button type="button" data-close aria-label="Close">×</button></div>
     <div class="modal-body">
+      <div><div class="lbl">ACCOUNT</div>
+        <div class="mnote" id="acctLine" style="margin:0 0 8px"></div>
+        <div class="row" style="gap:8px">
+          <button class="secondary fit" id="acctSignIn" type="button">SIGN IN / CREATE ACCOUNT</button>
+          <button class="secondary fit" id="acctLogout" type="button" style="display:none">LOG OUT</button>
+        </div>
+      </div>
       <div><div class="lbl">RADIO</div>
         <label class="switch"><input type="checkbox" id="optSound" checked><span>Play the radio<small>Turn off to follow the transcript silently.</small></span></label>
         <div class="lbl" style="margin-top:14px">CALL PICKUP SENSITIVITY <span id="sensLbl"></span></div>
@@ -2217,6 +2282,48 @@ async function mintStream(){
   STREAM=j.url;return true;
 }
 async function remint(){try{return USE_MINT&&await mintStream()}catch(e){console.warn('remint',e);return false}}
+
+/* ============================ ACCOUNTS ============================
+   Login/signup gate backed by the Cloudflare Worker. Logged-in users'
+   keys are loaded into the app's own-key slots so they spend their own
+   quota; guests keep using the shared keys exactly as before. */
+const AUTH_BASE=MINT_BASE||(RELAY?RELAY.replace(/\/$/,''):'');
+async function authFetch(path,opts){const r=await fetch(AUTH_BASE+path,opts||{});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
+function loadAccountKeys(k){k=k||{};if(k.groq)store.set('sttKey_groq',k.groq);if(k.gemini)store.set('geminiKey',k.gemini);if(k.deepgram)store.set('sttKey_deepgram',k.deepgram);else store.del('sttKey_deepgram');if(k.openai)store.set('sttKey_openai',k.openai);else store.del('sttKey_openai')}
+function clearAccountKeys(){store.del('sttKey_groq');store.del('geminiKey');store.del('sttKey_deepgram');store.del('sttKey_openai')}
+function authErr(id,msg,info){const e=$(id);if(!e)return;e.textContent=msg||'';e.classList.toggle('show',!!msg);e.classList.toggle('info',!!info)}
+function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup'}
+function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
+function hideGate(){$('authGate').hidden=true}
+function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none'}
+function enterGuest(){store.set('authMode','guest');store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('authMode','user');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('authMode','user');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');store.set('authMode','guest');clearAccountKeys();location.reload()}
+async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
+$('authLoginForm').addEventListener('submit',async e=>{e.preventDefault();authErr('liErr','');const b=$('liBtn');b.disabled=true;try{await doLogin($('liUser').value.trim(),$('liPass').value)}catch(err){authErr('liErr',err.message)}b.disabled=false});
+$('authSignupForm').addEventListener('submit',async e=>{e.preventDefault();const b=$('suBtn');
+  const username=$('suUser').value.trim(),email=$('suEmail').value.trim(),password=$('suPass').value;
+  const groq=$('suGroq').value.trim(),gemini=$('suGemini').value.trim(),deepgram=$('suDeepgram').value.trim(),openai=$('suOpenai').value.trim();
+  if(!username||!email||!password)return authErr('suErr','Fill in username, email and password.');
+  if(password.length<8)return authErr('suErr','Password must be at least 8 characters.');
+  if(!groq)return authErr('suErr','A Groq key is required.');
+  if(!gemini)return authErr('suErr','A Gemini key is required.');
+  b.disabled=true;authErr('suErr','Checking your keys…',true);
+  if(!await testKey('https://api.groq.com/openai/v1/models',{Authorization:'Bearer '+groq})){authErr('suErr','That Groq key was rejected. Check it and try again.');b.disabled=false;return}
+  if(!await testKey('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(gemini))){authErr('suErr','That Gemini key was rejected. Check it and try again.');b.disabled=false;return}
+  if(deepgram&&!await testKey('https://api.deepgram.com/v1/projects',{Authorization:'Token '+deepgram})){authErr('suErr','That Deepgram key was rejected. Remove it or correct it.');b.disabled=false;return}
+  if(openai&&!await testKey('https://api.openai.com/v1/models',{Authorization:'Bearer '+openai})){authErr('suErr','That OpenAI key was rejected. Remove it or correct it.');b.disabled=false;return}
+  authErr('suErr','');try{await doSignup({username,email,password,keys:{groq,gemini,deepgram,openai}})}catch(err){authErr('suErr',err.message)}b.disabled=false});
+document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{authErr('liErr','');authErr('suErr','');setAuthView(btn.dataset.authView)});
+document.querySelectorAll('.auth-guest').forEach(btn=>btn.onclick=enterGuest);
+if($('acctSignIn'))$('acctSignIn').onclick=()=>{try{$('settingsDlg').close()}catch{}showGate('login')};
+if($('acctLogout'))$('acctLogout').onclick=()=>{if(confirm('Log out and go back to the shared keys?'))doLogout()};
+(function initAuth(){const tok=store.get('authToken'),mode=store.get('authMode');refreshAccountUI();
+  if(tok){hideGate();fetch(AUTH_BASE+'/auth/me',{headers:{Authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{store.set('authUser',j.username);loadAccountKeys(j.keys);refreshAccountUI()}).catch(()=>{store.del('authToken');store.del('authUser');store.set('authMode','guest');clearAccountKeys();refreshAccountUI()})}
+  else if(mode==='guest'){hideGate()}
+  else{showGate('login')}
+})();
 const sharedOK=()=>!!(RELAY||SHARED_GROQ);
 const sttKey=(k=engine())=>ownKey(k)||(k==='groq'&&sharedOK()?'shared':'');
 function groqFetch(path,init={}){
@@ -2707,7 +2814,7 @@ function paintUsage(){
   const gemBlock=geminiKey()?`<div class="lbl" style="margin:10px 0 6px">ADDRESS &amp; WORD CHECK · GEMINI (FREE, CHECKED FIRST)</div><div class="urow">${gms}<div class="uk" style="color:var(--muted)">Each Gemini model has its own free daily allowance, separate from Groq. When one runs out the next takes over, then Groq's models below.</div></div>`:'';
   $('usage').innerHTML=`${gemBlock}<div class="lbl" style="margin:10px 0 6px">GROQ FREE PLAN · DAILY LIMITS</div>${rows.join('')}<div class="uk" style="color:var(--muted);margin-top:8px">Checks from this browser today: <b style="color:var(--text)">${allChecks.toLocaleString()}</b>${gm?` (Gemini: ${gm.toLocaleString()})`:''}${c?` · Claude: ${c.toLocaleString()}`:''}</div><div class="mnote">Bars show this browser's use over the last 24 hours, or the whole key's total when Groq has reported it. ${own?'You\'re using your own Groq key.':'The shared key is used by everyone on the site.'}</div>`;
 }
-function openSettings(){paintEngine();paintUsage();$('settingsDlg').showModal()}
+function openSettings(){paintEngine();paintUsage();refreshAccountUI();$('settingsDlg').showModal()}
 function openSetup(){if(!$('setupDlg').open)$('setupDlg').showModal();setTimeout(()=>$('setupKey').focus(),100)}
 async function saveKey(prov,key,note){
   key=key.trim();if(!key)return false;

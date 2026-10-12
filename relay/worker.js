@@ -44,12 +44,134 @@ async function bcfyMint(env, feedId) {
 function cors(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Expose-Headers': 'retry-after, x-ratelimit-remaining-requests, x-ratelimit-reset-requests',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
+}
+
+// --- Accounts: KV storage, PBKDF2 passwords, AES-GCM key encryption ---------
+// KV binding: USERS.  Secret: ENC_KEY (base64 of 32 random bytes).
+//   user:<lower>  -> { username, email, salt, hash, keysEnc, createdAt }
+//   sess:<token>  -> <lower>   (30-day TTL)
+// Passwords are PBKDF2-hashed with a per-user salt. Stored API keys are
+// AES-GCM encrypted, so a KV dump alone can't read them. On login the Worker
+// returns the decrypted keys to the user's own browser, which uses them to call
+// Groq/Gemini directly — no audio proxied through the Worker, so it stays free.
+const te = new TextEncoder(), td = new TextDecoder();
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const randToken = (n = 32) => b64(crypto.getRandomValues(new Uint8Array(n))).replace(/[+/=]/g, '');
+
+async function pbkdf2(password, saltBytes) {
+  const km = await crypto.subtle.importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' }, km, 256);
+  return b64(bits);
+}
+async function aesKey(env) {
+  // ENC_KEY is any secret string; derive a stable 32-byte AES key from it via
+  // SHA-256 (no base64 parsing, tolerant of how the secret was set). trim() so a
+  // stray trailing newline from `wrangler secret put` doesn't change the key.
+  const hash = await crypto.subtle.digest('SHA-256', te.encode(String(env.ENC_KEY || '').trim()));
+  return crypto.subtle.importKey('raw', hash, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function encrypt(env, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(env), te.encode(JSON.stringify(obj)));
+  return b64(iv) + '.' + b64(ct);
+}
+async function decrypt(env, blob) {
+  const [ivb, ctb] = blob.split('.');
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(ivb) }, await aesKey(env), unb64(ctb));
+  return JSON.parse(td.decode(pt));
+}
+const normKeys = (k = {}) => ({
+  groq: String(k.groq || ''), gemini: String(k.gemini || ''),
+  deepgram: String(k.deepgram || ''), openai: String(k.openai || ''),
+});
+
+async function sessionUser(env, request) {
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const uname = await env.USERS.get('sess:' + token);
+  return uname || null;
+}
+
+async function handleAuth(request, env, url, origin) {
+  const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  const ok = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: H });
+  const err = (status, error) => ok({ error }, status);
+  if (!env.USERS || !env.ENC_KEY) return err(500, 'accounts are not configured on this relay');
+
+  if (url.pathname === '/auth/signup' && request.method === 'POST') {
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const username = String(b.username || '').trim();
+    const email = String(b.email || '').trim();
+    const password = String(b.password || '');
+    const keys = normKeys(b.keys);
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) return err(400, 'Username must be 3–32 characters: letters, numbers, . _ -');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err(400, 'Enter a valid email address');
+    if (password.length < 8) return err(400, 'Password must be at least 8 characters');
+    if (!keys.groq) return err(400, 'A Groq API key is required');
+    if (!keys.gemini) return err(400, 'A Gemini API key is required');
+    const ukey = 'user:' + username.toLowerCase();
+    if (await env.USERS.get(ukey)) return err(409, 'That username is already taken');
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const hash = await pbkdf2(password, salt);
+    const keysEnc = await encrypt(env, keys);
+    await env.USERS.put(ukey, JSON.stringify({ username, email, salt: b64(salt), hash, keysEnc, createdAt: Date.now() }));
+    const token = randToken();
+    await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
+    return ok({ token, username, keys });
+  }
+
+  if (url.pathname === '/auth/login' && request.method === 'POST') {
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const username = String(b.username || '').trim();
+    const password = String(b.password || '');
+    const rec = await env.USERS.get('user:' + username.toLowerCase());
+    if (!rec) return err(401, 'Wrong username or password');
+    const u = JSON.parse(rec);
+    const hash = await pbkdf2(password, unb64(u.salt));
+    if (hash !== u.hash) return err(401, 'Wrong username or password');
+    const token = randToken();
+    await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
+    return ok({ token, username: u.username, keys: await decrypt(env, u.keysEnc) });
+  }
+
+  if (url.pathname === '/auth/me' && request.method === 'GET') {
+    const uname = await sessionUser(env, request);
+    if (!uname) return err(401, 'not signed in');
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return err(401, 'not signed in');
+    const u = JSON.parse(rec);
+    return ok({ username: u.username, email: u.email, keys: await decrypt(env, u.keysEnc) });
+  }
+
+  if (url.pathname === '/auth/keys' && request.method === 'POST') {
+    const uname = await sessionUser(env, request);
+    if (!uname) return err(401, 'not signed in');
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const keys = normKeys(b.keys);
+    if (!keys.groq) return err(400, 'A Groq API key is required');
+    if (!keys.gemini) return err(400, 'A Gemini API key is required');
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return err(401, 'not signed in');
+    const u = JSON.parse(rec);
+    u.keysEnc = await encrypt(env, keys);
+    await env.USERS.put('user:' + uname, JSON.stringify(u));
+    return ok({ ok: true, keys });
+  }
+
+  if (url.pathname === '/auth/logout' && request.method === 'POST') {
+    const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+    if (token) await env.USERS.delete('sess:' + token);
+    return ok({ ok: true });
+  }
+
+  return err(404, 'unknown auth route');
 }
 
 export default {
@@ -59,6 +181,15 @@ export default {
     if (!okOrigin) return new Response('Forbidden', { status: 403 });
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     const url = new URL(request.url);
+
+    // Account endpoints (signup / login / me / keys / logout).
+    if (url.pathname.startsWith('/auth/')) {
+      try { return await handleAuth(request, env, url, origin); }
+      catch (e) {
+        return new Response(JSON.stringify({ error: 'auth error: ' + String((e && e.message) || e) }),
+          { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
+      }
+    }
 
     // Mint a fresh signed stream URL (GET /mint?feedId=44069).
     if (url.pathname === '/mint') {

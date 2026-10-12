@@ -4,6 +4,11 @@ name = "police-scanner-relay"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
+# User accounts + encrypted API keys + sessions.
+[[kv_namespaces]]
+binding = "USERS"
+id = "0f70b007db1b43bda48b7f8102243ffa"
+
 # Secrets are NOT stored here (they'd be committed). Set them once with:
 #   npx wrangler secret put BCFY_USERNAME
 #   npx wrangler secret put BCFY_PASSWORD
