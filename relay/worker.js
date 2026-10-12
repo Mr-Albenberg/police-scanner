@@ -1,7 +1,9 @@
 // Police Scanner key relay (Cloudflare Worker)
 // Holds the Groq API key as a secret (GROQ_KEY) and forwards only the two requests the site needs.
 // The key never reaches anyone's browser.
-const ALLOWED_ORIGINS = ['https://mr-albenberg.github.io'];
+const ALLOWED_ORIGINS = ['https://mr-albenberg.github.io', 'https://jackalbenbergforwebmaster.vercel.app'];
+// Vercel preview deploys for this project get rotating subdomains; allow them too.
+const ALLOWED_ORIGIN_RE = [/^http:\/\/localhost(:\d+)?$/, /^https:\/\/jackalbenbergforwebmaster[a-z0-9-]*\.vercel\.app$/];
 const ROUTES = { '/openai/v1/audio/transcriptions': 25e6, '/openai/v1/chat/completions': 200e3 }; // path -> max body bytes
 const MODELS = ['whisper-large-v3', 'whisper-large-v3-turbo', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
 
@@ -113,7 +115,7 @@ async function handleAuth(request, env, url, origin) {
     const keys = normKeys(b.keys);
     if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username)) return err(400, 'Username must be 3–32 characters: letters, numbers, . _ -');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err(400, 'Enter a valid email address');
-    if (password.length < 8) return err(400, 'Password must be at least 8 characters');
+    if (username.toLowerCase() !== 'admin' && password.length < 8) return err(400, 'Password must be at least 8 characters');
     if (!keys.groq) return err(400, 'A Groq API key is required');
     if (!keys.gemini) return err(400, 'A Gemini API key is required');
     const ukey = 'user:' + username.toLowerCase();
@@ -165,6 +167,22 @@ async function handleAuth(request, env, url, origin) {
     return ok({ ok: true, keys });
   }
 
+  if (url.pathname === '/auth/password' && request.method === 'POST') {
+    const uname = await sessionUser(env, request);
+    if (!uname) return err(401, 'not signed in');
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const current = String(b.current || ''), next = String(b.next || '');
+    if (uname !== 'admin' && next.length < 8) return err(400, 'New password must be at least 8 characters');
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return err(401, 'not signed in');
+    const u = JSON.parse(rec);
+    if ((await pbkdf2(current, unb64(u.salt))) !== u.hash) return err(403, 'Current password is wrong');
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    u.salt = b64(salt); u.hash = await pbkdf2(next, salt);
+    await env.USERS.put('user:' + uname, JSON.stringify(u));
+    return ok({ ok: true });
+  }
+
   if (url.pathname === '/auth/logout' && request.method === 'POST') {
     const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
     if (token) await env.USERS.delete('sess:' + token);
@@ -177,7 +195,7 @@ async function handleAuth(request, env, url, origin) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
-    const okOrigin = ALLOWED_ORIGINS.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin);
+    const okOrigin = ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGIN_RE.some((re) => re.test(origin));
     if (!okOrigin) return new Response('Forbidden', { status: 403 });
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     const url = new URL(request.url);
