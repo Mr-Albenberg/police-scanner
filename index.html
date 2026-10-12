@@ -409,7 +409,13 @@
    CONFIG
    ================================================================ */
 const QS=new URLSearchParams(location.search);
-const STREAM=QS.get('stream')||'https://hls-o2.broadcastify.com/t/v1./feed/44069/playlist.m3u8';
+// The stream URL is signed and expires, so we fetch a fresh one from the mint
+// relay (a tiny Cloudflare Worker) at start and whenever it expires. An explicit
+// ?stream= overrides this (e.g. pointing at a local proxy for testing).
+let STREAM=QS.get('stream')||'https://hls-o2.broadcastify.com/t/v1./feed/44069/playlist.m3u8';
+const USE_MINT=!QS.get('stream');
+// Feed id, from a Broadcastify URL (/feed/44069) or the local relay (/hls/44069/).
+const FEED_ID=QS.get('feed')||(STREAM.match(/\/(?:feed|hls)\/(\d+)/)||[])[1]||'44069';
 const HLS_SRC='https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js';
 const TRANSFORMERS='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 const CLAUDE_MODEL='claude-haiku-4-5-20251001';
@@ -2203,6 +2209,23 @@ const ownKey=(k=engine())=>store.get('sttKey_'+k,'');
 // The shared key lives in a small relay server (relay/worker.js), never in this page. Your own key, if you add one, goes straight to Groq.
 const RELAY_URL=''; // the relay's address (relay/worker.js on Cloudflare)
 const RELAY=QS.get('relay')||RELAY_URL;
+// The deployed Worker's address, for minting the stream URL. Set this to your
+// Worker (e.g. 'https://police-scanner-relay.<you>.workers.dev') after deploy.
+// It's independent of the Groq RELAY above, so minting works whether or not you
+// route Groq through the Worker.
+const MINT_BASE='https://police-scanner-relay.jackalbenberg.workers.dev';
+// Mint endpoint: Worker's /mint route (MINT_BASE, or the Groq RELAY if that's
+// the same Worker, or ?mint= for local testing). Returns { url } — a fresh signed
+// Broadcastify HLS URL the browser then reads straight from the CDN.
+const MINT_URL=QS.get('mint')||[MINT_BASE,RELAY].map(b=>b&&b.replace(/\/$/,'')+'/mint').find(Boolean)||'';
+async function mintStream(){
+  if(!MINT_URL)return false;
+  const r=await fetch(MINT_URL+(MINT_URL.includes('?')?'&':'?')+'feedId='+FEED_ID,{cache:'no-store'});
+  if(!r.ok)throw new Error('mint '+r.status);
+  const j=await r.json();if(!j||!j.url)throw new Error('mint returned no url');
+  STREAM=j.url;return true;
+}
+async function remint(){try{return USE_MINT&&await mintStream()}catch(e){console.warn('remint',e);return false}}
 const sharedOK=()=>!!(RELAY||SHARED_GROQ);
 const sttKey=(k=engine())=>ownKey(k)||(k==='groq'&&sharedOK()?'shared':'');
 function groqFetch(path,init={}){
@@ -2391,7 +2414,7 @@ async function pumpDevice(){
    ================================================================ */
 const SEG={running:false,seq:-1,carry:null,fails:0,ok:0,blocked:false};
 // Broadcastify refuses the stream (since July 2026 it no longer lets other websites play its feeds): say so plainly
-const FEED_PAGE='https://www.broadcastify.com/listen/feed/'+((STREAM.match(/\/feed\/(\d+)/)||[])[1]||'');
+const FEED_PAGE='https://www.broadcastify.com/listen/feed/'+FEED_ID;
 // 'ok', 'refused' (the server answers but won't share the stream with this page) or 'down'
 async function probeStream(){
   try{const r=await fetch(STREAM,{cache:'no-store',signal:timeoutSignal(8000)});return r.status===401||r.status===403?'refused':r.ok?'ok':'down'}
@@ -2406,7 +2429,7 @@ function feedBlocked(){
    Broadcastify no longer lets other sites read its stream, but you can still listen on its pop-out player.
    Open it in a tab, press play there, then share that tab's sound with this page: the calls are transcribed as before.
    (Desktop Chrome, Edge or Opera. Phones can't share another tab's sound.) */
-const POPOUT='https://www.broadcastify.com/listen/feed/popout.php?feedId='+((STREAM.match(/\/feed\/(\d+)/)||[])[1]||'44069');
+const POPOUT='https://www.broadcastify.com/listen/feed/popout.php?feedId='+FEED_ID;
 const TAB={stream:null,win:null,node:null,src:null,n:0};
 function tabGuide(step){
   const can=!!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia);
@@ -2478,11 +2501,14 @@ function stopTabCapture(){
 }
 
 async function segmentLoop(){
-  const base=STREAM.slice(0,STREAM.lastIndexOf('/')+1);
+  let base=STREAM.slice(0,STREAM.lastIndexOf('/')+1);
   while(SEG.running){
     try{
       const plr=await fetch(STREAM,{cache:'no-store',signal:timeoutSignal(10000)});
-      if(plr.status===401||plr.status===403){SEG.running=false;feedBlocked();return}
+      if(plr.status===401||plr.status===403){
+        // Signed URL expired — get a fresh one and keep going; only give up if minting fails.
+        if(await remint()){base=STREAM.slice(0,STREAM.lastIndexOf('/')+1);SEG.seq=-1;await sleep(300);continue}
+        SEG.running=false;feedBlocked();return}
       const pl=await plr.text();
       const ms=+(pl.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/)||[])[1]||0;
       const lines_=pl.split('\n').map(s=>s.trim()),uris=[],durs=[];
@@ -2640,6 +2666,7 @@ async function keepAwake(on){try{if(on&&navigator.wakeLock&&!wakeLock){wakeLock=
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&listening)keepAwake(true)});
 async function play(){
   const btn=$('start');btn.disabled=true;state('CONNECTING');
+  if(USE_MINT&&MINT_URL){try{await mintStream()}catch(e){btn.disabled=false;state('NO STREAM');showErr('Couldn\'t get the radio stream from the relay. '+(e.message||''));return}}
   const c=getCtx();c&&c.resume&&c.resume();
   if($('optSound').checked)pbStart();
   if(engine()==='device'){await gpuCheck;if(!worker){paintModels();startWorker()}}

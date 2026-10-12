@@ -1,0 +1,10 @@
+# Cloudflare Worker config for the police-scanner relay.
+# Deploy from this folder with:  npx wrangler deploy
+name = "police-scanner-relay"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Secrets are NOT stored here (they'd be committed). Set them once with:
+#   npx wrangler secret put BCFY_USERNAME
+#   npx wrangler secret put BCFY_PASSWORD
+# (and, only if you also route Groq through the Worker, GROQ_KEY)
