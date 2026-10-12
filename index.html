@@ -32,7 +32,8 @@
     .icon{min-width:42px;padding:0 11px;font-size:15px}
     #alertsBtn::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#6d8290;margin-right:7px;vertical-align:1px}
     #alertsBtn.on::before{background:var(--green);box-shadow:0 0 8px #53ebb0cc}
-    select,input[type=text],input[type=password],input[type=search]{min-height:42px;width:100%;background:#0a1824;border:1px solid #2a5068;border-radius:8px;color:var(--text);font:600 15px Inter,system-ui,sans-serif;padding:0 12px;min-width:0}
+    select,input[type=text],input[type=email],input[type=password],input[type=search]{min-height:42px;width:100%;background:#0a1824;border:1px solid #2a5068;border-radius:8px;color:var(--text);font:600 15px Inter,system-ui,sans-serif;padding:0 12px;min-width:0}
+    input:-webkit-autofill,input:-webkit-autofill:focus{-webkit-text-fill-color:var(--text);-webkit-box-shadow:0 0 0 1000px #0a1824 inset;caret-color:var(--text)}
     .glass{background:var(--glass);border:1px solid #255069;border-radius:12px;box-shadow:0 14px 36px #0009;backdrop-filter:blur(11px);-webkit-backdrop-filter:blur(11px)}
 
     #map{position:fixed;inset:0;background:#0c1418;z-index:0}
@@ -327,31 +328,30 @@
         <input id="suPass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password">
         <div class="auth-keys">
           <div class="auth-keyrow">
-            <label class="auth-lbl" for="suGroq"><span>Groq API key</span><a href="https://console.groq.com/keys" target="_blank" rel="noopener">open Groq ↗</a></label>
+            <label class="auth-lbl" for="suGroq"><span>Groq API key · transcribes the radio</span><a href="https://console.groq.com/keys" target="_blank" rel="noopener">open Groq ↗</a></label>
             <input id="suGroq" type="password" placeholder="gsk_…" autocomplete="off" spellcheck="false">
+            <details class="auth-help">
+              <summary>How do I get a Groq key?</summary>
+              <div class="auth-help-body"><ol>
+                <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and sign in (free, no card).</li>
+                <li>Click <b>Create API Key</b> and give it any name.</li>
+                <li>Copy the key — it starts with <code>gsk_</code> — and paste it above.</li>
+              </ol></div>
+            </details>
           </div>
           <div class="auth-keyrow">
-            <label class="auth-lbl" for="suGemini"><span>Gemini API key</span><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">open AI Studio ↗</a></label>
+            <label class="auth-lbl" for="suGemini"><span>Gemini API key · checks addresses &amp; words</span><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">open AI Studio ↗</a></label>
             <input id="suGemini" type="password" placeholder="AI… or AQ.…" autocomplete="off" spellcheck="false">
+            <details class="auth-help">
+              <summary>How do I get a Gemini key?</summary>
+              <div class="auth-help-body"><ol>
+                <li>Open <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> and sign in with Google.</li>
+                <li>Click <b>Create API key</b> (pick a project if asked).</li>
+                <li>Copy the key and paste it above.</li>
+              </ol></div>
+            </details>
           </div>
         </div>
-        <details class="auth-help">
-          <summary>How do I get these keys?</summary>
-          <div class="auth-help-body">
-            <b>Groq — transcribes the radio</b>
-            <ol>
-              <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and sign in (free, no card).</li>
-              <li>Click <b>Create API Key</b> and give it any name.</li>
-              <li>Copy the key — it starts with <code>gsk_</code> — and paste it above.</li>
-            </ol>
-            <b>Gemini — checks addresses &amp; words</b>
-            <ol>
-              <li>Open <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> and sign in with Google.</li>
-              <li>Click <b>Create API key</b> (pick a project if asked).</li>
-              <li>Copy the key and paste it above.</li>
-            </ol>
-          </div>
-        </details>
         <div class="auth-err" id="suErr"></div>
         <button type="submit" id="suBtn">CREATE ACCOUNT</button>
         <div class="auth-links">
@@ -2341,10 +2341,13 @@ function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine
 async function syncAccountKeys(){const tok=store.get('authToken');if(!tok)return false;const keys={groq:store.get('sttKey_groq','')||'',gemini:store.get('geminiKey','')||'',deepgram:store.get('sttKey_deepgram','')||'',openai:store.get('sttKey_openai','')||''};if(!keys.groq||!keys.gemini)return false;try{await fetch(AUTH_BASE+'/auth/keys',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({keys})});return true}catch{return false}}
 async function changePassword(current,next){const tok=store.get('authToken');if(!tok)throw new Error('not signed in');const r=await fetch(AUTH_BASE+'/auth/password',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({current,next})});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||('Error '+r.status));return true}
 if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$('pwNew').value,msg=$('pwMsg');msg.textContent='';if(!cur||!nw){msg.textContent='Enter your current and new password.';return}$('pwSave').disabled=true;try{await changePassword(cur,nw);$('pwCurrent').value='';$('pwNew').value='';msg.textContent='Password updated.'}catch(e){msg.textContent=e.message}$('pwSave').disabled=false};
-function enterGuest(){store.set('authMode','guest');store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('authMode','user');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
-async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('authMode','user');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
-async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');store.set('authMode','guest');clearAccountKeys();location.reload()}
+// Guests are NOT remembered: continuing as guest only dismisses the gate for
+// this page load, so a sign-in is prompted again next time. Logged-in users
+// (a stored token) are remembered and skip the gate.
+function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
 $('authLoginForm').addEventListener('submit',async e=>{e.preventDefault();authErr('liErr','');const b=$('liBtn');b.disabled=true;try{await doLogin($('liUser').value.trim(),$('liPass').value)}catch(err){authErr('liErr',err.message)}b.disabled=false});
 $('authSignupForm').addEventListener('submit',async e=>{e.preventDefault();const b=$('suBtn');
@@ -2362,9 +2365,8 @@ document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{auth
 document.querySelectorAll('.auth-guest').forEach(btn=>btn.onclick=enterGuest);
 if($('acctSignIn'))$('acctSignIn').onclick=()=>{try{$('settingsDlg').close()}catch{}showGate('login')};
 if($('acctLogout'))$('acctLogout').onclick=()=>{if(confirm('Log out and go back to the shared keys?'))doLogout()};
-(function initAuth(){const tok=store.get('authToken'),mode=store.get('authMode');refreshAccountUI();
-  if(tok){hideGate();fetch(AUTH_BASE+'/auth/me',{headers:{Authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{store.set('authUser',j.username);loadAccountKeys(j.keys);refreshAccountUI()}).catch(()=>{store.del('authToken');store.del('authUser');store.set('authMode','guest');clearAccountKeys();refreshAccountUI()})}
-  else if(mode==='guest'){hideGate()}
+(function initAuth(){const tok=store.get('authToken');refreshAccountUI();
+  if(tok){hideGate();fetch(AUTH_BASE+'/auth/me',{headers:{Authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{store.set('authUser',j.username);loadAccountKeys(j.keys);refreshAccountUI()}).catch(()=>{store.del('authToken');store.del('authUser');clearAccountKeys();showGate('login');refreshAccountUI()})}
   else{showGate('login')}
 })();
 const sharedOK=()=>!!(RELAY||SHARED_GROQ);
