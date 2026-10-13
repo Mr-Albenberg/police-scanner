@@ -57,6 +57,12 @@
     .acct-menu-name{padding:8px 10px 7px;font-size:11px;font-weight:850;letter-spacing:.03em;color:var(--muted);border-bottom:1px solid var(--line2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .acct-menu-item{display:block;width:100%;text-align:left;background:none;border:0;min-height:40px;padding:0 10px;color:#dff5fc;font-size:13px;font-weight:700;border-radius:8px;letter-spacing:0}
     .acct-menu-item:hover{background:#102c3e}
+    .acct-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
+    .prof-top{display:flex;align-items:center;gap:16px}
+    .prof-avatar{width:72px;height:72px;border-radius:50%;flex:0 0 auto;background:#2a5068;display:flex;align-items:center;justify-content:center;color:#cfe3ec;font-weight:850;font-size:28px;overflow:hidden;border:1px solid #35647c}
+    .prof-avatar img{width:100%;height:100%;object-fit:cover}
+    .prof-top-actions{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+    .prof-msg{color:var(--muted);font-size:12px;min-height:0}
     #start{min-width:160px}
 
     /* transcript over the map */
@@ -398,6 +404,7 @@
         <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest">⚙</span></button>
         <div id="acctMenu" class="acct-menu" hidden>
           <div class="acct-menu-name" id="acctMenuName">Guest · shared keys</div>
+          <button type="button" class="acct-menu-item" id="menuProfile" style="display:none">👤 Profile</button>
           <button type="button" class="acct-menu-item" id="menuSettings">⚙ Settings</button>
           <button type="button" class="acct-menu-item" id="menuAccount">Sign in / Create account</button>
           <button type="button" class="acct-menu-item" id="menuLogout" style="display:none">Log out</button>
@@ -451,6 +458,30 @@
   <div id="errbar" role="alert"></div>
   <div id="toast" role="status"><b>⚠ POLICE ACTIVITY NEAR YOU</b><span id="toastText"></span></div>
 
+  <dialog id="profileDlg" aria-label="Profile">
+    <div class="modal-head">PROFILE<button type="button" data-close aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="prof-top">
+        <div class="prof-avatar" id="profAvatar"></div>
+        <div class="prof-top-actions">
+          <button class="secondary fit" id="profPhotoBtn" type="button">CHANGE PHOTO</button>
+          <button class="linkbtn" id="profPhotoRemove" type="button" style="display:none;padding:0">Remove photo</button>
+          <input type="file" id="profPhotoInput" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
+      </div>
+      <div class="prof-msg" id="profPhotoMsg"></div>
+      <div><div class="lbl">USERNAME</div>
+        <div class="row" style="margin-top:6px"><input id="profUser" type="text" placeholder="Username" autocapitalize="none" spellcheck="false"></div>
+        <div class="row" style="margin-top:6px"><input id="profUserPw" type="password" placeholder="Confirm with your password" autocomplete="current-password"><button class="secondary fit" id="profUserSave" type="button">SAVE</button></div>
+        <div class="mnote" id="profUserMsg"></div>
+      </div>
+      <div><div class="lbl">PASSWORD</div>
+        <div class="row" style="margin-top:6px"><input id="profPwCur" type="password" placeholder="Current password" autocomplete="current-password"></div>
+        <div class="row" style="margin-top:6px"><input id="profPwNew" type="password" placeholder="New password (8+ characters)" autocomplete="new-password"><button class="secondary fit" id="profPwSave" type="button">UPDATE</button></div>
+        <div class="mnote" id="profPwMsg"></div>
+      </div>
+    </div>
+  </dialog>
   <dialog id="settingsDlg" aria-label="Settings">
     <div class="modal-head">SETTINGS<button type="button" data-close aria-label="Close">×</button></div>
     <div class="modal-body">
@@ -2366,9 +2397,9 @@ function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
 function hideGate(){$('authGate').hidden=true}
 function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),pw=$('acctPwBox');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(pw)pw.style.display=u?'':'none';
   const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display=u?'':'none';if(cb)cb.style.display=u?'':'none';
-  const av=$('acctAvatar');if(av){if(u){av.textContent=String(u)[0].toUpperCase();av.classList.remove('guest')}else{av.textContent='⚙';av.classList.add('guest')}}
+  const av=$('acctAvatar');const img=store.get('acctAvatar','');if(av){if(u&&img){av.innerHTML='<img src="'+img+'" alt="">';av.classList.remove('guest')}else if(u){av.textContent=String(u)[0].toUpperCase();av.classList.remove('guest')}else{av.textContent='⚙';av.classList.add('guest')}}
   const mn=$('acctMenuName');if(mn)mn.textContent=u?('Signed in as '+String(u).replace(/[<>&"]/g,'')):'Guest · shared keys';
-  const ma=$('menuAccount'),ml=$('menuLogout');if(ma)ma.style.display=u?'none':'';if(ml)ml.style.display=u?'':'none';
+  const ma=$('menuAccount'),ml=$('menuLogout'),mp=$('menuProfile');if(ma)ma.style.display=u?'none':'';if(ml)ml.style.display=u?'':'none';if(mp)mp.style.display=u?'':'none';
   try{p2pOnAuth(!!u)}catch{}}
 // Push the current local keys up to the signed-in account (so a key changed in
 // Settings sticks across logins/devices). The account needs both required keys.
@@ -2379,8 +2410,8 @@ if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$
 // this page load, so a sign-in is prompted again next time. Logged-in users
 // (a stored token) are remembered and skip the gate.
 function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
-async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
 async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
 $('authLoginForm').addEventListener('submit',async e=>{e.preventDefault();authErr('liErr','');const b=$('liBtn');b.disabled=true;try{await doLogin($('liUser').value.trim(),$('liPass').value)}catch(err){authErr('liErr',err.message)}b.disabled=false});
@@ -2400,7 +2431,7 @@ document.querySelectorAll('.auth-guest').forEach(btn=>btn.onclick=enterGuest);
 if($('acctSignIn'))$('acctSignIn').onclick=()=>{try{$('settingsDlg').close()}catch{}showGate('login')};
 if($('acctLogout'))$('acctLogout').onclick=()=>{if(confirm('Log out and go back to the shared keys?'))doLogout()};
 (function initAuth(){const tok=store.get('authToken');refreshAccountUI();
-  if(tok){hideGate();fetch(AUTH_BASE+'/auth/me',{headers:{Authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{store.set('authUser',j.username);loadAccountKeys(j.keys);refreshAccountUI()}).catch(()=>{store.del('authToken');store.del('authUser');clearAccountKeys();showGate('login');refreshAccountUI()})}
+  if(tok){hideGate();fetch(AUTH_BASE+'/auth/me',{headers:{Authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);refreshAccountUI()}).catch(()=>{store.del('authToken');store.del('authUser');clearAccountKeys();showGate('login');refreshAccountUI()})}
   else{showGate('login')}
 })();
 const sharedOK=()=>!!(RELAY||SHARED_GROQ);
@@ -2931,6 +2962,18 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('acctMenu'))acctM
 $('menuSettings').onclick=()=>{acctMenuOpen(false);openSettings()};
 $('menuAccount').onclick=()=>{acctMenuOpen(false);showGate('login')};
 $('menuLogout').onclick=()=>{acctMenuOpen(false);if(confirm('Log out and go back to the shared keys?'))doLogout()};
+$('menuProfile').onclick=()=>{acctMenuOpen(false);openProfile()};
+function paintProfAvatar(){const a=$('profAvatar');const img=store.get('acctAvatar','');const u=store.get('authUser','?');if(img){a.innerHTML='<img src="'+img+'" alt="">'}else{a.textContent=String(u)[0].toUpperCase()}$('profPhotoRemove').style.display=img?'':'none'}
+function openProfile(){const u=store.get('authUser');if(!u){showGate('login');return}
+  $('profUser').value=u;$('profUserPw').value='';$('profUserMsg').textContent='';$('profPwCur').value='';$('profPwNew').value='';$('profPwMsg').textContent='';$('profPhotoMsg').textContent='';
+  paintProfAvatar();$('profileDlg').showModal()}
+function resizeImage(file,max=160){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');let w=img.width,h=img.height;const s=Math.min(max/w,max/h,1);w=Math.round(w*s);h=Math.round(h*s);c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.82))};img.onerror=()=>rej(new Error('That image could not be read.'));img.src=URL.createObjectURL(file)})}
+async function saveAvatar(dataUrl){const tok=store.get('authToken');const r=await fetch(AUTH_BASE+'/auth/profile',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({avatar:dataUrl})});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Error');store.set('acctAvatar',j.avatar||'');paintProfAvatar();refreshAccountUI()}
+$('profPhotoBtn').onclick=()=>$('profPhotoInput').click();
+$('profPhotoInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('profPhotoMsg').textContent='Updating photo…';try{await saveAvatar(await resizeImage(f));$('profPhotoMsg').textContent='Photo updated.'}catch(err){$('profPhotoMsg').textContent=err.message||'Could not set photo.'}$('profPhotoInput').value=''};
+$('profPhotoRemove').onclick=async()=>{$('profPhotoMsg').textContent='Removing…';try{await saveAvatar('');$('profPhotoMsg').textContent='Photo removed.'}catch(err){$('profPhotoMsg').textContent=err.message}};
+$('profUserSave').onclick=async()=>{const nu=$('profUser').value.trim(),pw=$('profUserPw').value,msg=$('profUserMsg');msg.textContent='';if(!nu)return msg.textContent='Enter a username.';if(!pw)return msg.textContent='Enter your password to confirm.';$('profUserSave').disabled=true;try{const tok=store.get('authToken');const r=await fetch(AUTH_BASE+'/auth/username',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({username:nu,password:pw})});let j={};try{j=await r.json()}catch{}if(!r.ok)throw new Error(j.error||'Error');store.set('authUser',j.username);$('profUserPw').value='';msg.textContent='Username updated.';refreshAccountUI();paintProfAvatar()}catch(err){msg.textContent=err.message}$('profUserSave').disabled=false};
+$('profPwSave').onclick=async()=>{const cur=$('profPwCur').value,nw=$('profPwNew').value,msg=$('profPwMsg');msg.textContent='';if(!cur||!nw)return msg.textContent='Enter your current and new password.';$('profPwSave').disabled=true;try{await changePassword(cur,nw);$('profPwCur').value='';$('profPwNew').value='';msg.textContent='Password updated.'}catch(err){msg.textContent=err.message}$('profPwSave').disabled=false};
 document.querySelectorAll('dialog [data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
 $('fallback').onclick=()=>{$('settingsDlg').close();const f=document.querySelector('#fallbackDialog iframe');if(!f.src)f.src=f.dataset.src;$('fallbackDialog').showModal()};
@@ -2984,7 +3027,7 @@ async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Startin
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(()=>reg(id),30000);startHostSync();hostBanner();p2pPaintButtons()});
-  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{if(JSON.parse(d).type==='hello')sendSnapshot(conn)}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
@@ -3007,19 +3050,21 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   if(!peerId){p2pStatus('No active host on your account right now.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},2500);return}
   await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
+  enterFollow();p2pStatus('Connecting to host…');
+  let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — tap CONNECT to retry.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4000)}},22000);
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{enterFollow();p2pStatus('Following host · live');p2pPaintButtons()});
+    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello'}))}catch{}p2pStatus('Following host · live');p2pPaintButtons()});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{p2pStatus('Host went offline.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},3000)});
-    conn.on('error',()=>{p2pStatus('Could not connect to the host.');exitFollow()})});
-  P2P.peer.on('error',e=>{p2pStatus('Connect error: '+e.type);exitFollow()})}
-function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow'}
+    conn.on('close',()=>{clearTimeout(deadline);p2pStatus('Host went offline.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},3000)});
+    conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
+  P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
+function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Waiting for calls to come in…</div>'}
 function exitFollow(){$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
 function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
   else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
   else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc)}
-function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();let el=document.getElementById('fl_'+l.id);
+function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();const fw=$('followWait');if(fw)fw.remove();let el=document.getElementById('fl_'+l.id);
   if(!el){el=document.createElement('div');el.id='fl_'+l.id;el.dataset.ts=l.ts;let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<l.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el)}
   el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
 function applyInc(s){let r=P2P.followIncs.get(s.id);

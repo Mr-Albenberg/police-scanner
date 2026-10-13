@@ -126,7 +126,7 @@ async function handleAuth(request, env, url, origin) {
     await env.USERS.put(ukey, JSON.stringify({ username, email, salt: b64(salt), hash, keysEnc, createdAt: Date.now() }));
     const token = randToken();
     await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
-    return ok({ token, username, keys });
+    return ok({ token, username, keys, avatar: '' });
   }
 
   if (url.pathname === '/auth/login' && request.method === 'POST') {
@@ -140,7 +140,7 @@ async function handleAuth(request, env, url, origin) {
     if (hash !== u.hash) return err(401, 'Wrong username or password');
     const token = randToken();
     await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
-    return ok({ token, username: u.username, keys: await decrypt(env, u.keysEnc) });
+    return ok({ token, username: u.username, keys: await decrypt(env, u.keysEnc), avatar: u.avatar || '' });
   }
 
   if (url.pathname === '/auth/me' && request.method === 'GET') {
@@ -149,7 +149,7 @@ async function handleAuth(request, env, url, origin) {
     const rec = await env.USERS.get('user:' + uname);
     if (!rec) return err(401, 'not signed in');
     const u = JSON.parse(rec);
-    return ok({ username: u.username, email: u.email, keys: await decrypt(env, u.keysEnc) });
+    return ok({ username: u.username, email: u.email, keys: await decrypt(env, u.keysEnc), avatar: u.avatar || '' });
   }
 
   if (url.pathname === '/auth/keys' && request.method === 'POST') {
@@ -165,6 +165,48 @@ async function handleAuth(request, env, url, origin) {
     u.keysEnc = await encrypt(env, keys);
     await env.USERS.put('user:' + uname, JSON.stringify(u));
     return ok({ ok: true, keys });
+  }
+
+  if (url.pathname === '/auth/profile' && request.method === 'POST') {
+    const uname = await sessionUser(env, request);
+    if (!uname) return err(401, 'not signed in');
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return err(401, 'not signed in');
+    const u = JSON.parse(rec);
+    if ('avatar' in b) {
+      const a = String(b.avatar || '');
+      if (a && !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(a)) return err(400, 'Image must be a PNG, JPEG or WebP');
+      if (a.length > 200000) return err(400, 'Image is too large — pick a smaller one');
+      u.avatar = a;
+    }
+    await env.USERS.put('user:' + uname, JSON.stringify(u));
+    return ok({ ok: true, avatar: u.avatar || '' });
+  }
+
+  if (url.pathname === '/auth/username' && request.method === 'POST') {
+    const uname = await sessionUser(env, request);
+    if (!uname) return err(401, 'not signed in');
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const newName = String(b.username || '').trim();
+    const password = String(b.password || '');
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(newName)) return err(400, 'Username must be 3–32 characters: letters, numbers, . _ -');
+    const lowNew = newName.toLowerCase();
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return err(401, 'not signed in');
+    const u = JSON.parse(rec);
+    if ((await pbkdf2(password, unb64(u.salt))) !== u.hash) return err(403, 'Password is wrong');
+    if (lowNew !== uname && await env.USERS.get('user:' + lowNew)) return err(409, 'That username is taken');
+    u.username = newName;
+    await env.USERS.put('user:' + lowNew, JSON.stringify(u));
+    if (lowNew !== uname) {
+      await env.USERS.delete('user:' + uname);
+      const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+      if (token) await env.USERS.put('sess:' + token, lowNew, { expirationTtl: 60 * 60 * 24 * 30 });
+      const h = await env.USERS.get('host:' + uname);
+      if (h) { await env.USERS.put('host:' + lowNew, h, { expirationTtl: 60 }); await env.USERS.delete('host:' + uname); }
+    }
+    return ok({ username: newName });
   }
 
   if (url.pathname === '/auth/password' && request.method === 'POST') {
