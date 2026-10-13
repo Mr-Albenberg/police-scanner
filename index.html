@@ -24,15 +24,16 @@
       --top:max(14px,env(safe-area-inset-top));--gap:14px;--sheet:150px}
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;-webkit-text-size-adjust:100%}
-    button{min-height:40px;padding:0 14px;border:0;border-radius:9px;background:linear-gradient(135deg,#ff9a5c,#ff6a44);color:#fff;font:850 11px Inter,system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;white-space:nowrap;touch-action:manipulation;box-shadow:0 4px 16px #ff6a4433;transition:filter .14s,box-shadow .14s,transform .05s}
-    button:hover{filter:brightness(1.08);box-shadow:0 6px 22px #ff6a4455}button:active{transform:translateY(1px)}button:disabled{opacity:.55;cursor:wait;box-shadow:none}
+    button{min-height:40px;padding:0 14px;border:0;border-radius:10px;background:linear-gradient(135deg,#ff9a5c,#ff6a44);color:#fff;font:850 11px Inter,system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;white-space:nowrap;touch-action:manipulation;box-shadow:inset 0 1px 0 #ffffff33,0 1px 2px #0005;transition:filter .14s,box-shadow .14s,transform .05s}
+    button:hover{filter:brightness(1.07)}button:active{transform:translateY(1px)}button:disabled{opacity:.55;cursor:wait;box-shadow:none}
     button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
     .secondary{background:#102c3e;border:1px solid #35647c;color:#dff5fc;box-shadow:none}
     .secondary:hover{background:#15384e;border-color:#4a8aa8;filter:none;box-shadow:0 0 0 1px #4a8aa855}
     .secondary.on{background:#0f3b33;border-color:var(--green);color:var(--green)}
-    #hostBtn,#connectBtn{font-size:10px;min-height:36px;padding:0 12px;letter-spacing:.04em}
+    .p2p-btn{font-size:10px;min-height:34px;padding:0 11px;letter-spacing:.04em;display:inline-flex;align-items:center;gap:7px}
+    .p2pic{width:15px;height:15px;flex:0 0 auto;opacity:.9}
     #connectBtn.host-live{border-color:var(--green);color:#bff4df}
-    #connectBtn.host-live::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px #53ebb0;margin-right:7px;vertical-align:1px;animation:pulseDot 1.5s ease-in-out infinite}
+    #connectBtn.host-live::before{content:'';width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--green);box-shadow:0 0 8px #53ebb0;animation:pulseDot 1.5s ease-in-out infinite}
     @keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.72)}}
     .icon{min-width:42px;padding:0 11px;font-size:15px}
     #alertsBtn::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#6d8290;margin-right:7px;vertical-align:1px}
@@ -323,6 +324,15 @@
     .auth-note{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55}
     #authGate input{min-height:44px}
     #authGate input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px #0cf3}
+    .auth-steps{display:flex;gap:7px;margin:-2px 0 4px}
+    .auth-step{width:26px;height:4px;border-radius:2px;background:#20465c;transition:background .25s}
+    .auth-step.on{background:linear-gradient(90deg,#5fdcff,#1fb0e0)}
+    #suStep1,#suStep2{display:flex;flex-direction:column;gap:12px}
+    #suStep1[hidden],#suStep2[hidden]{display:none}
+    .auth-btn-row{display:flex;gap:9px;margin-top:2px}
+    .auth-btn-row #suBack{flex:0 0 auto;width:88px}
+    .auth-btn-row #suBtn{flex:1}
+    #suNext{width:100%}
     .auth-keys{display:flex;flex-direction:column;gap:12px;padding:13px;border:1px solid #27485d;border-radius:12px;background:#0a1826}
     .auth-keyrow{display:flex;flex-direction:column;gap:6px}
     .auth-lbl{font-size:11px;font-weight:800;letter-spacing:.04em;color:#cfe3ec;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
@@ -342,7 +352,7 @@
     .auth-err.info{color:var(--muted)}
     .auth-links{display:flex;justify-content:space-between;gap:10px;margin-top:4px;flex-wrap:wrap}
     .auth-links .linkbtn{padding:0}
-    #authGate button[type=submit]{width:100%;min-height:48px;font-size:12.5px;margin-top:6px;box-shadow:0 8px 24px #ff80502e}
+    #authGate button[type=submit]{width:100%;min-height:48px;font-size:12.5px;margin-top:6px;box-shadow:inset 0 1px 0 #ffffff33,0 1px 2px #0005}
   </style>
   <div id="authGate" class="auth-gate" hidden>
     <div class="auth-card">
@@ -362,38 +372,46 @@
 
       <form id="authSignupForm" class="auth-view" hidden>
         <div class="auth-title">Create account</div>
-        <p class="auth-note">Your account uses your own API keys, so the shared keys never run out. Both keys below are free — no card needed.</p>
-        <input id="suUser" type="text" placeholder="Username (3–32 characters)" autocomplete="username" autocapitalize="none" spellcheck="false">
-        <input id="suEmail" type="email" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false">
-        <input id="suPass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password">
-        <div class="auth-keys">
-          <div class="auth-keyrow">
-            <label class="auth-lbl" for="suGroq"><span>Groq API key · transcribes the radio</span><a href="https://console.groq.com/keys" target="_blank" rel="noopener">open Groq ↗</a></label>
-            <input id="suGroq" type="password" placeholder="gsk_…" autocomplete="off" spellcheck="false">
-            <details class="auth-help">
-              <summary>How do I get a Groq key?</summary>
-              <div class="auth-help-body"><ol>
-                <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and sign in (free, no card).</li>
-                <li>Click <b>Create API Key</b> and give it any name.</li>
-                <li>Copy the key — it starts with <code>gsk_</code> — and paste it above.</li>
-              </ol></div>
-            </details>
-          </div>
-          <div class="auth-keyrow">
-            <label class="auth-lbl" for="suGemini"><span>Gemini API key · checks addresses &amp; words</span><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">open AI Studio ↗</a></label>
-            <input id="suGemini" type="password" placeholder="AI… or AQ.…" autocomplete="off" spellcheck="false">
-            <details class="auth-help">
-              <summary>How do I get a Gemini key?</summary>
-              <div class="auth-help-body"><ol>
-                <li>Open <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> and sign in with Google.</li>
-                <li>Click <b>Create API key</b> (pick a project if asked).</li>
-                <li>Copy the key and paste it above.</li>
-              </ol></div>
-            </details>
-          </div>
+        <div class="auth-steps"><span class="auth-step on" id="suDot1"></span><span class="auth-step" id="suDot2"></span></div>
+        <div id="suStep1">
+          <p class="auth-note">Step 1 of 2 · your account details.</p>
+          <input id="suUser" type="text" placeholder="Username (3–32 characters)" autocomplete="username" autocapitalize="none" spellcheck="false">
+          <input id="suEmail" type="email" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false">
+          <input id="suPass" type="password" placeholder="Password (8+ characters)" autocomplete="new-password">
+          <div class="auth-err" id="suErr1"></div>
+          <button type="button" id="suNext">CONTINUE</button>
         </div>
-        <div class="auth-err" id="suErr"></div>
-        <button type="submit" id="suBtn">CREATE ACCOUNT</button>
+        <div id="suStep2" hidden>
+          <p class="auth-note">Step 2 of 2 · your API keys. Both are free — no card needed — and keep the shared keys from running out.</p>
+          <div class="auth-keys">
+            <div class="auth-keyrow">
+              <label class="auth-lbl" for="suGroq"><span>Groq API key · transcribes the radio</span><a href="https://console.groq.com/keys" target="_blank" rel="noopener">open Groq ↗</a></label>
+              <input id="suGroq" type="password" placeholder="gsk_…" autocomplete="off" spellcheck="false">
+              <details class="auth-help">
+                <summary>How do I get a Groq key?</summary>
+                <div class="auth-help-body"><ol>
+                  <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and sign in (free, no card).</li>
+                  <li>Click <b>Create API Key</b> and give it any name.</li>
+                  <li>Copy the key — it starts with <code>gsk_</code> — and paste it above.</li>
+                </ol></div>
+              </details>
+            </div>
+            <div class="auth-keyrow">
+              <label class="auth-lbl" for="suGemini"><span>Gemini API key · checks addresses &amp; words</span><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">open AI Studio ↗</a></label>
+              <input id="suGemini" type="password" placeholder="AI… or AQ.…" autocomplete="off" spellcheck="false">
+              <details class="auth-help">
+                <summary>How do I get a Gemini key?</summary>
+                <div class="auth-help-body"><ol>
+                  <li>Open <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> and sign in with Google.</li>
+                  <li>Click <b>Create API key</b> (pick a project if asked).</li>
+                  <li>Copy the key and paste it above.</li>
+                </ol></div>
+              </details>
+            </div>
+          </div>
+          <div class="auth-err" id="suErr"></div>
+          <div class="auth-btn-row"><button type="button" id="suBack" class="secondary">BACK</button><button type="submit" id="suBtn">CREATE ACCOUNT</button></div>
+        </div>
         <div class="auth-links">
           <button type="button" class="linkbtn" data-auth-view="login">I already have an account</button>
           <button type="button" class="linkbtn auth-guest">Continue as guest</button>
@@ -417,8 +435,8 @@
     </div>
     <div class="controls">
       <button id="start" type="button">START LISTENING</button>
-      <button id="hostBtn" class="secondary" type="button" title="Broadcast your transcript and map to your other devices on this account" style="display:none">HOST TO ACCOUNT</button>
-      <button id="connectBtn" class="secondary" type="button" title="Mirror a device that is hosting on your account" style="display:none">CONNECT TO HOST</button>
+      <button id="hostBtn" class="secondary p2p-btn" type="button" title="Broadcast your transcript and map to your other devices on this account" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg><span class="p2p-lbl">HOST</span></button>
+      <button id="connectBtn" class="secondary p2p-btn" type="button" title="Mirror a device that is hosting on your account" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg><span class="p2p-lbl">CONNECT</span></button>
       <button id="alertsBtn" class="secondary" type="button" title="Alerts off. Tap to turn on.">ALERTS OFF</button>
       <div class="acct-wrap">
         <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest"></span></button>
@@ -2413,7 +2431,8 @@ async function authFetch(path,opts){const r=await fetch(AUTH_BASE+path,opts||{})
 function loadAccountKeys(k){k=k||{};if(k.groq)store.set('sttKey_groq',k.groq);if(k.gemini)store.set('geminiKey',k.gemini);if(k.deepgram)store.set('sttKey_deepgram',k.deepgram);else store.del('sttKey_deepgram');if(k.openai)store.set('sttKey_openai',k.openai);else store.del('sttKey_openai')}
 function clearAccountKeys(){store.del('sttKey_groq');store.del('geminiKey');store.del('sttKey_deepgram');store.del('sttKey_openai')}
 function authErr(id,msg,info){const e=$(id);if(!e)return;e.textContent=msg||'';e.classList.toggle('show',!!msg);e.classList.toggle('info',!!info)}
-function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup'}
+function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup';if(v==='signup')suStep(1)}
+function suStep(n){if(!$('suStep1'))return;$('suStep1').hidden=n!==1;$('suStep2').hidden=n!==2;$('suDot2').classList.toggle('on',n===2)}
 function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
 function hideGate(){$('authGate').hidden=true}
 function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),ap=$('acctProfile'),ah=$('acctHint');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(ap)ap.style.display=u?'':'none';if(ah)ah.style.display=u?'':'none';
@@ -2439,15 +2458,21 @@ $('authLoginForm').addEventListener('submit',async e=>{e.preventDefault();authEr
 $('authSignupForm').addEventListener('submit',async e=>{e.preventDefault();const b=$('suBtn');
   const username=$('suUser').value.trim(),email=$('suEmail').value.trim(),password=$('suPass').value;
   const groq=$('suGroq').value.trim(),gemini=$('suGemini').value.trim();
-  if(!username||!email||!password)return authErr('suErr','Fill in username, email and password.');
-  if(password.length<8)return authErr('suErr','Password must be at least 8 characters.');
+  if(!username||!email||!password||password.length<8){suStep(1);return authErr('suErr1','Fill in username, email and a password of 8+ characters.')}
   if(!groq)return authErr('suErr','A Groq key is required — see “How do I get these keys?”.');
   if(!gemini)return authErr('suErr','A Gemini key is required — see “How do I get these keys?”.');
   b.disabled=true;authErr('suErr','Checking your keys…',true);
   if(!await testKey('https://api.groq.com/openai/v1/models',{Authorization:'Bearer '+groq})){authErr('suErr','That Groq key was rejected. Check it and try again.');b.disabled=false;return}
   if(!await testKey('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(gemini))){authErr('suErr','That Gemini key was rejected. Check it and try again.');b.disabled=false;return}
   authErr('suErr','');try{await doSignup({username,email,password,keys:{groq,gemini}})}catch(err){authErr('suErr',err.message)}b.disabled=false});
-document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{authErr('liErr','');authErr('suErr','');setAuthView(btn.dataset.authView)});
+$('suNext').onclick=()=>{authErr('suErr1','');const u=$('suUser').value.trim(),e=$('suEmail').value.trim(),p=$('suPass').value;
+  if(!u||!e||!p)return authErr('suErr1','Fill in username, email and password.');
+  if(!/^[A-Za-z0-9_.-]{3,32}$/.test(u))return authErr('suErr1','Username must be 3–32 characters: letters, numbers, . _ -');
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))return authErr('suErr1','Enter a valid email address.');
+  if(p.length<8)return authErr('suErr1','Password must be at least 8 characters.');
+  suStep(2);try{$('suGroq').focus()}catch{}};
+$('suBack').onclick=()=>{authErr('suErr','');suStep(1)};
+document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{authErr('liErr','');authErr('suErr','');authErr('suErr1','');setAuthView(btn.dataset.authView)});
 document.querySelectorAll('.auth-guest').forEach(btn=>btn.onclick=enterGuest);
 if($('acctSignIn'))$('acctSignIn').onclick=()=>{try{$('settingsDlg').close()}catch{}showGate('login')};
 if($('acctLogout'))$('acctLogout').onclick=()=>{if(confirm('Log out and go back to the shared keys?'))doLogout()};
@@ -3038,11 +3063,12 @@ async function ensurePeer(){if(!window.Peer)await loadScript(PEERJS_SRC)}
 async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:authHdr()});const j=await r.json();if(j.iceServers&&j.iceServers.length)return{iceServers:j.iceServers}}catch{}return{iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]}}
 
 function p2pOnAuth(loggedIn){if(!loggedIn){p2pStop();clearInterval(P2P.poll);return}p2pPaintButtons();clearInterval(P2P.poll);p2pCheckHost();P2P.poll=setInterval(p2pCheckHost,12000)}
+function p2pLbl(btn,txt){const s=btn.querySelector('.p2p-lbl');if(s)s.textContent=txt;else btn.textContent=txt}
 function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(!hb||!cb)return;const u=!!store.get('authUser');
   if(!u){hb.style.display='none';cb.style.display='none';return}
-  if(P2P.mode==='host'){hb.style.display='';hb.textContent='STOP HOSTING';hb.classList.add('on');cb.style.display='none'}
-  else if(P2P.mode==='follow'){cb.style.display='';cb.textContent='STOP FOLLOWING';cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;hb.style.display='none'}
-  else{hb.style.display='';hb.textContent='HOST TO ACCOUNT';hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;cb.textContent=P2P.hostAvail?'HOST ONLINE · CONNECT':'CONNECT TO HOST';cb.classList.toggle('host-live',P2P.hostAvail);cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
+  if(P2P.mode==='host'){hb.style.display='';p2pLbl(hb,'STOP');hb.classList.add('on');cb.style.display='none'}
+  else if(P2P.mode==='follow'){cb.style.display='';p2pLbl(cb,'STOP');cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;hb.style.display='none'}
+  else{hb.style.display='';p2pLbl(hb,'HOST');hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;p2pLbl(cb,'CONNECT');cb.classList.toggle('host-live',P2P.hostAvail);cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
 async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;try{const r=await fetch(AUTH_BASE+'/host',{headers:authHdr()});P2P.hostAvail=!!(await r.json()).peerId}catch{P2P.hostAvail=false}p2pPaintButtons()}
 
 async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
