@@ -47,7 +47,16 @@
     .stat{display:grid;grid-template-columns:auto auto;gap:2px 10px;padding-left:14px;border-left:1px solid #284e63;font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
     .stat b{color:var(--text);font-weight:800}
     .lvl{grid-column:1/-1;height:3px;background:#12293a;border-radius:2px;overflow:hidden}.lvl i{display:block;height:100%;width:0;background:var(--green);transition:width .25s}
-    .controls{display:flex;gap:8px}
+    .controls{display:flex;gap:8px;align-items:center}
+    .acct-wrap{position:relative}
+    .acct-btn{min-width:42px;padding:0 9px}
+    .acct-avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--cyan);color:#041018;font-weight:850;font-size:12px;line-height:1}
+    .acct-avatar.guest{background:#2a5068;color:#cfe3ec}
+    .acct-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:950;min-width:200px;background:#0b1b2a;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 60px #000b;padding:6px}
+    .acct-menu[hidden]{display:none}
+    .acct-menu-name{padding:8px 10px 7px;font-size:11px;font-weight:850;letter-spacing:.03em;color:var(--muted);border-bottom:1px solid var(--line2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .acct-menu-item{display:block;width:100%;text-align:left;background:none;border:0;min-height:40px;padding:0 10px;color:#dff5fc;font-size:13px;font-weight:700;border-radius:8px;letter-spacing:0}
+    .acct-menu-item:hover{background:#102c3e}
     #start{min-width:160px}
 
     /* transcript over the map */
@@ -247,7 +256,12 @@
       header{flex-wrap:wrap;gap:8px;padding:9px 10px}
       .brand h1{font-size:15px}.eyebrow{font-size:9px}.logo{width:28px;height:28px;border-radius:7px}
       .stat{font-size:9px;padding-left:10px}
-      .controls{width:100%}#start{flex:1;min-width:0}
+      .controls{width:100%;flex-wrap:wrap;gap:6px}
+      .controls button{font-size:10px;min-height:38px;padding:0 10px}
+      #start{flex:1 1 100%;font-size:12px}
+      #hostBtn,#connectBtn{flex:1 1 auto}
+      .acct-btn{flex:0 0 auto;min-width:42px}
+      .acct-menu{min-width:62vw}
       #side{top:calc(var(--top) + 112px);left:var(--gap);right:var(--gap);width:auto}
       #zoneHead{min-height:42px}
       #zoneBody{max-height:calc(100vh - var(--sheet) - var(--top) - 180px);overflow-y:auto}
@@ -380,7 +394,15 @@
       <button id="hostBtn" class="secondary" type="button" title="Broadcast your transcript and map to your other devices on this account" style="display:none">HOST TO ACCOUNT</button>
       <button id="connectBtn" class="secondary" type="button" title="Mirror a device that is hosting on your account" style="display:none">CONNECT TO HOST</button>
       <button id="alertsBtn" class="secondary" type="button" title="Alerts off. Tap to turn on.">ALERTS OFF</button>
-      <button id="settingsBtn" class="secondary" type="button" title="Transcription, alert sound and watched streets">SETTINGS</button>
+      <div class="acct-wrap">
+        <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest">⚙</span></button>
+        <div id="acctMenu" class="acct-menu" hidden>
+          <div class="acct-menu-name" id="acctMenuName">Guest · shared keys</div>
+          <button type="button" class="acct-menu-item" id="menuSettings">⚙ Settings</button>
+          <button type="button" class="acct-menu-item" id="menuAccount">Sign in / Create account</button>
+          <button type="button" class="acct-menu-item" id="menuLogout" style="display:none">Log out</button>
+        </div>
+      </div>
     </div>
   </header>
   <style>
@@ -2344,6 +2366,9 @@ function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
 function hideGate(){$('authGate').hidden=true}
 function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),pw=$('acctPwBox');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(pw)pw.style.display=u?'':'none';
   const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display=u?'':'none';if(cb)cb.style.display=u?'':'none';
+  const av=$('acctAvatar');if(av){if(u){av.textContent=String(u)[0].toUpperCase();av.classList.remove('guest')}else{av.textContent='⚙';av.classList.add('guest')}}
+  const mn=$('acctMenuName');if(mn)mn.textContent=u?('Signed in as '+String(u).replace(/[<>&"]/g,'')):'Guest · shared keys';
+  const ma=$('menuAccount'),ml=$('menuLogout');if(ma)ma.style.display=u?'none':'';if(ml)ml.style.display=u?'':'none';
   try{p2pOnAuth(!!u)}catch{}}
 // Push the current local keys up to the signed-in account (so a key changed in
 // Settings sticks across logins/devices). The account needs both required keys.
@@ -2899,7 +2924,13 @@ $('sttKeySave').onclick=async()=>{const v=$('sttKey').value.trim();if(!v)return;
 $('setupSave').onclick=async()=>{if(await saveKey('groq',$('setupKey').value,$('setupNote'))){$('setupNote').textContent='Connected. New calls will be transcribed as they come in.';setTimeout(()=>$('setupDlg').close(),900)}};
 $('setupKey').addEventListener('keydown',e=>{if(e.key==='Enter')$('setupSave').click()});
 $('setupDevice').onclick=()=>{store.set('engine','device');$('setupDlg').close();gpuCheck.then(()=>{paintModels();if(listening&&!worker)startWorker()})};
-$('settingsBtn').onclick=openSettings;
+function acctMenuOpen(v){const m=$('acctMenu'),b=$('acctBtn');const open=v===undefined?m.hidden:v;m.hidden=!open;b.setAttribute('aria-expanded',open?'true':'false')}
+$('acctBtn').onclick=e=>{e.stopPropagation();acctMenuOpen()};
+document.addEventListener('click',e=>{if($('acctMenu')&&!$('acctMenu').hidden&&!e.target.closest('.acct-wrap'))acctMenuOpen(false)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('acctMenu'))acctMenuOpen(false)});
+$('menuSettings').onclick=()=>{acctMenuOpen(false);openSettings()};
+$('menuAccount').onclick=()=>{acctMenuOpen(false);showGate('login')};
+$('menuLogout').onclick=()=>{acctMenuOpen(false);if(confirm('Log out and go back to the shared keys?'))doLogout()};
 document.querySelectorAll('dialog [data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
 $('fallback').onclick=()=>{$('settingsDlg').close();const f=document.querySelector('#fallbackDialog iframe');if(!f.src)f.src=f.dataset.src;$('fallbackDialog').showModal()};
@@ -2946,7 +2977,7 @@ function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(!hb||!cb)
   if(!u){hb.style.display='none';cb.style.display='none';return}
   if(P2P.mode==='host'){hb.style.display='';hb.textContent='STOP HOSTING';hb.classList.add('on');cb.style.display='none'}
   else if(P2P.mode==='follow'){cb.style.display='';cb.textContent='STOP FOLLOWING';cb.classList.add('on');cb.disabled=false;hb.style.display='none'}
-  else{hb.style.display='';hb.textContent='HOST TO ACCOUNT';hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.textContent=P2P.hostAvail?'CONNECT TO HOST':'NO HOST ONLINE';cb.disabled=!P2P.hostAvail}}
+  else{hb.style.display='';hb.textContent='HOST TO ACCOUNT';hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;cb.textContent='CONNECT TO HOST';cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
 async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;try{const r=await fetch(AUTH_BASE+'/host',{headers:authHdr()});P2P.hostAvail=!!(await r.json()).peerId}catch{P2P.hostAvail=false}p2pPaintButtons()}
 
 async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
@@ -2965,7 +2996,11 @@ function startHostSync(){clearInterval(P2P.sync);P2P.sync=setInterval(()=>{if(!P
   const lm=[];for(const e of lines){if(!e.el)continue;const s=snapLine(e);const k=s.cls+'|'+s.style+'|'+s.html;if(P2P.sent.lines[s.id]!==k){P2P.sent.lines[s.id]=k;lm.push(s)}}
   const im=[];for(const inc of incidents){const s=snapInc(inc);const k=JSON.stringify(s);if(P2P.sent.incs[s.id]!==k){P2P.sent.incs[s.id]=k;im.push(s)}}
   if(lm.length)broadcast({type:'lines',lines:lm});if(im.length)broadcast({type:'incs',incs:im})},1200)}
-function sendSnapshot(conn){try{conn.send(JSON.stringify({type:'snapshot',lines:lines.map(snapLine),incs:incidents.map(snapInc)}))}catch{}}
+function sendSnapshot(conn){try{
+  conn.send(JSON.stringify({type:'snapshot-start'}));
+  const is=incidents.map(snapInc);for(let i=0;i<is.length;i+=20)conn.send(JSON.stringify({type:'incs',incs:is.slice(i,i+20)}));
+  const ls=lines.map(snapLine);for(let i=0;i<ls.length;i+=12)conn.send(JSON.stringify({type:'lines',lines:ls.slice(i,i+12)}));
+}catch{}}
 
 async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Looking for a host…');let peerId=null;
   try{peerId=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
@@ -2981,7 +3016,7 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow'}
 function exitFollow(){$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
-function applyRemote(msg){if(msg.type==='snapshot'){clearView();(msg.incs||[]).forEach(applyInc);(msg.lines||[]).slice().sort((a,b)=>a.ts-b.ts).forEach(applyLine)}
+function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
   else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
   else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc)}
 function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();let el=document.getElementById('fl_'+l.id);
