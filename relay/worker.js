@@ -239,10 +239,11 @@ export default {
 
       // /ice
       const iceServers = [{ urls: 'stun:stun.cloudflare.com:3478' }];
-      if (env.TURN_TOKEN_ID && env.TURN_API_TOKEN) {
+      const turnId = String(env.TURN_TOKEN_ID || '').trim(), turnKey = String(env.TURN_API_TOKEN || '').trim();
+      if (turnId && turnKey) {
         try {
-          const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_TOKEN_ID}/credentials/generate`, {
-            method: 'POST', headers: { Authorization: 'Bearer ' + env.TURN_API_TOKEN, 'Content-Type': 'application/json' },
+          const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${turnId}/credentials/generate`, {
+            method: 'POST', headers: { Authorization: 'Bearer ' + turnKey, 'Content-Type': 'application/json' },
             body: JSON.stringify({ ttl: 86400 }),
           });
           if (r.ok) { const j = await r.json(); if (j.iceServers) iceServers.push(j.iceServers); }
