@@ -209,6 +209,48 @@ export default {
       }
     }
 
+    // --- Device coordination for same-account P2P (WebRTC via PeerJS) ---------
+    //  /host  POST {peerId}  register this device as the account's host (60s TTL)
+    //         POST {stop:1}  stop hosting
+    //         GET            get the account's current host peer id (or null)
+    //  /ice   GET            ICE servers (Cloudflare STUN always; TURN if the
+    //                        TURN_TOKEN_ID + TURN_API_TOKEN secrets are set)
+    if (url.pathname === '/host' || url.pathname === '/ice') {
+      const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+      const uname = await sessionUser(env, request);
+      if (!uname) return new Response(JSON.stringify({ error: 'not signed in' }), { status: 401, headers: H });
+
+      if (url.pathname === '/host') {
+        if (request.method === 'GET') {
+          const rec = await env.USERS.get('host:' + uname);
+          const h = rec ? JSON.parse(rec) : null;
+          return new Response(JSON.stringify({ peerId: h ? h.peerId : null }), { headers: H });
+        }
+        if (request.method === 'POST') {
+          let b; try { b = await request.json(); } catch { b = {}; }
+          if (b.stop) { await env.USERS.delete('host:' + uname); return new Response(JSON.stringify({ ok: true }), { headers: H }); }
+          const peerId = String(b.peerId || '');
+          if (!peerId) return new Response(JSON.stringify({ error: 'peerId required' }), { status: 400, headers: H });
+          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 60 });
+          return new Response(JSON.stringify({ ok: true }), { headers: H });
+        }
+        return new Response(JSON.stringify({ error: 'method' }), { status: 405, headers: H });
+      }
+
+      // /ice
+      const iceServers = [{ urls: 'stun:stun.cloudflare.com:3478' }];
+      if (env.TURN_TOKEN_ID && env.TURN_API_TOKEN) {
+        try {
+          const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_TOKEN_ID}/credentials/generate`, {
+            method: 'POST', headers: { Authorization: 'Bearer ' + env.TURN_API_TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ttl: 86400 }),
+          });
+          if (r.ok) { const j = await r.json(); if (j.iceServers) iceServers.push(j.iceServers); }
+        } catch { /* fall back to STUN only */ }
+      }
+      return new Response(JSON.stringify({ iceServers }), { headers: H });
+    }
+
     // Mint a fresh signed stream URL (GET /mint?feedId=44069).
     if (url.pathname === '/mint') {
       const jsonHeaders = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };

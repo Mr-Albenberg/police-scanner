@@ -377,10 +377,17 @@
     </div>
     <div class="controls">
       <button id="start" type="button">START LISTENING</button>
+      <button id="hostBtn" class="secondary" type="button" title="Broadcast your transcript and map to your other devices on this account" style="display:none">HOST TO ACCOUNT</button>
+      <button id="connectBtn" class="secondary" type="button" title="Mirror a device that is hosting on your account" style="display:none">CONNECT TO HOST</button>
       <button id="alertsBtn" class="secondary" type="button" title="Alerts off. Tap to turn on.">ALERTS OFF</button>
       <button id="settingsBtn" class="secondary" type="button" title="Transcription, alert sound and watched streets">SETTINGS</button>
     </div>
   </header>
+  <style>
+    .p2p-banner{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:905;max-width:92vw;background:var(--glass2);border:1px solid var(--cyan);color:var(--cyan);padding:7px 15px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.05em;box-shadow:0 10px 28px #000a;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #connectBtn:disabled{opacity:.5;cursor:default}
+  </style>
+  <div id="p2pBanner" class="p2p-banner" style="display:none"></div>
 
   <aside id="feed" class="glass" aria-label="Live transcript">
     <div class="grab"></div>
@@ -2335,7 +2342,9 @@ function authErr(id,msg,info){const e=$(id);if(!e)return;e.textContent=msg||'';e
 function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup'}
 function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
 function hideGate(){$('authGate').hidden=true}
-function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),pw=$('acctPwBox');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(pw)pw.style.display=u?'':'none'}
+function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),pw=$('acctPwBox');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(pw)pw.style.display=u?'':'none';
+  const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display=u?'':'none';if(cb)cb.style.display=u?'':'none';
+  try{p2pOnAuth(!!u)}catch{}}
 // Push the current local keys up to the signed-in account (so a key changed in
 // Settings sticks across logins/devices). The account needs both required keys.
 async function syncAccountKeys(){const tok=store.get('authToken');if(!tok)return false;const keys={groq:store.get('sttKey_groq','')||'',gemini:store.get('geminiKey','')||'',deepgram:store.get('sttKey_deepgram','')||'',openai:store.get('sttKey_openai','')||''};if(!keys.groq||!keys.gemini)return false;try{await fetch(AUTH_BASE+'/auth/keys',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify({keys})});return true}catch{return false}}
@@ -2917,6 +2926,78 @@ if(saved)map.fitBounds(meCircle.getBounds(),{maxZoom:16,...fitPad()});
 gpuCheck.then(paintModels);
 aiStatus(engine()==='device'?'ON-DEVICE':sttKey()?'READY · '+PROVIDERS[engine()].name.split(' ·')[0]:'NEEDS KEY');
 setTimeout(loadStreetData,100);
+
+/* ================================================================
+   P2P SYNC — mirror the host's transcript + map to other devices on
+   the same account. PeerJS cloud for signalling; Cloudflare STUN/TURN
+   (from the Worker's /ice) for connectivity; the Worker's /host is the
+   account-scoped rendezvous. Audio is never shared — followers paint
+   the host's rendered lines and markers read-only.
+   ================================================================ */
+const PEERJS_SRC='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js';
+const P2P={peer:null,mode:'off',conns:new Map(),hostConn:null,hb:null,sync:null,poll:null,sent:{lines:{},incs:{}},followIncs:new Map(),hostAvail:false};
+function authHdr(){return {'Content-Type':'application/json',Authorization:'Bearer '+store.get('authToken')}}
+function p2pStatus(m){const el=$('p2pBanner');if(el){el.textContent=m||'';el.style.display=m?'':'none'}}
+async function ensurePeer(){if(!window.Peer)await loadScript(PEERJS_SRC)}
+async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:authHdr()});const j=await r.json();if(j.iceServers&&j.iceServers.length)return{iceServers:j.iceServers}}catch{}return{iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]}}
+
+function p2pOnAuth(loggedIn){if(!loggedIn){p2pStop();clearInterval(P2P.poll);return}p2pPaintButtons();clearInterval(P2P.poll);p2pCheckHost();P2P.poll=setInterval(p2pCheckHost,12000)}
+function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(!hb||!cb)return;const u=!!store.get('authUser');
+  if(!u){hb.style.display='none';cb.style.display='none';return}
+  if(P2P.mode==='host'){hb.style.display='';hb.textContent='STOP HOSTING';hb.classList.add('on');cb.style.display='none'}
+  else if(P2P.mode==='follow'){cb.style.display='';cb.textContent='STOP FOLLOWING';cb.classList.add('on');cb.disabled=false;hb.style.display='none'}
+  else{hb.style.display='';hb.textContent='HOST TO ACCOUNT';hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.textContent=P2P.hostAvail?'CONNECT TO HOST':'NO HOST ONLINE';cb.disabled=!P2P.hostAvail}}
+async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;try{const r=await fetch(AUTH_BASE+'/host',{headers:authHdr()});P2P.hostAvail=!!(await r.json()).peerId}catch{P2P.hostAvail=false}p2pPaintButtons()}
+
+async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
+  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
+  const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
+  P2P.peer.on('open',async id=>{await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(()=>reg(id),30000);startHostSync();hostBanner();p2pPaintButtons()});
+  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+  P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
+  if(!listening){try{play()}catch{}}}
+function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
+function broadcast(msg){const s=JSON.stringify(msg);for(const c of P2P.conns.values()){try{c.send(s)}catch{}}}
+function snapLine(e){return{id:e.id,ts:+e.time,cls:e.el?e.el.className:'line',style:e.el?(e.el.getAttribute('style')||''):'',html:e.el?e.el.innerHTML:''}}
+function snapInc(inc){let iconHtml='',size=18,popup='',ll=null;try{const ic=inc.marker.getIcon();iconHtml=ic.options.html;size=(ic.options.iconSize&&ic.options.iconSize[0])||18}catch{}try{ll=inc.marker.getLatLng()}catch{}try{const p=inc.marker.getPopup();popup=p?p.getContent():''}catch{}
+  return{id:inc.id,lat:ll?ll.lat:inc.lat,lon:ll?ll.lng:inc.lon,iconHtml,size,popup,line:inc.line||null,lineColors:inc.line?incCols(inc):null,gone:!!inc.gone}}
+function startHostSync(){clearInterval(P2P.sync);P2P.sync=setInterval(()=>{if(!P2P.conns.size)return;
+  const lm=[];for(const e of lines){if(!e.el)continue;const s=snapLine(e);const k=s.cls+'|'+s.style+'|'+s.html;if(P2P.sent.lines[s.id]!==k){P2P.sent.lines[s.id]=k;lm.push(s)}}
+  const im=[];for(const inc of incidents){const s=snapInc(inc);const k=JSON.stringify(s);if(P2P.sent.incs[s.id]!==k){P2P.sent.incs[s.id]=k;im.push(s)}}
+  if(lm.length)broadcast({type:'lines',lines:lm});if(im.length)broadcast({type:'incs',incs:im})},1200)}
+function sendSnapshot(conn){try{conn.send(JSON.stringify({type:'snapshot',lines:lines.map(snapLine),incs:incidents.map(snapInc)}))}catch{}}
+
+async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Looking for a host…');let peerId=null;
+  try{peerId=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+  if(!peerId){p2pStatus('No active host on your account right now.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},2500);return}
+  await ensurePeer();const cfg=await iceConfig();
+  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
+  P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
+    conn.on('open',()=>{enterFollow();p2pStatus('Following host · live');p2pPaintButtons()});
+    conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
+    conn.on('close',()=>{p2pStatus('Host went offline.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},3000)});
+    conn.on('error',()=>{p2pStatus('Could not connect to the host.');exitFollow()})});
+  P2P.peer.on('error',e=>{p2pStatus('Connect error: '+e.type);exitFollow()})}
+function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow'}
+function exitFollow(){$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
+function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
+function applyRemote(msg){if(msg.type==='snapshot'){clearView();(msg.incs||[]).forEach(applyInc);(msg.lines||[]).slice().sort((a,b)=>a.ts-b.ts).forEach(applyLine)}
+  else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
+  else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc)}
+function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();let el=document.getElementById('fl_'+l.id);
+  if(!el){el=document.createElement('div');el.id='fl_'+l.id;el.dataset.ts=l.ts;let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<l.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el)}
+  el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
+function applyInc(s){let r=P2P.followIncs.get(s.id);
+  if(s.gone){if(r){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.delete(s.id);return}
+  if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map)}catch{}}
+  try{r.marker.setLatLng([s.lat,s.lon]);r.marker.setIcon(L.divIcon({className:'',iconSize:[s.size,s.size],iconAnchor:[s.size/2,s.size/2],popupAnchor:[0,-s.size/2],html:s.iconHtml}));if(s.popup)r.marker.bindPopup(s.popup,popPad())}catch{}
+  try{r.lg.clearLayers();if(s.line&&s.lineColors)s.lineColors.forEach((c,i)=>r.lg.addLayer(L.polyline(s.line,{color:c,weight:6,opacity:.9,dashArray:i?'14 14':null})))}catch{}}
+function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);if(P2P.mode==='host')fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{});if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
+$('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
+$('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};
+// Now that P2P is initialized, set up buttons/poll for the current auth state
+// (the earlier call from initAuth was skipped while P2P was still in its TDZ).
+try{p2pOnAuth(!!store.get('authUser'))}catch{}
 </script>
 </body>
 </html>
