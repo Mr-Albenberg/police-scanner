@@ -164,7 +164,9 @@
     .sat{filter:brightness(.78) saturate(.9) contrast(1.05)}
     .leaflet-container{font-family:Inter,system-ui,sans-serif;background:#0c1418}
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#091522;color:var(--text);border:1px solid var(--line);box-shadow:0 10px 30px #000a}
-    .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.5;max-width:300px}
+    .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.5;max-width:min(300px,78vw);overflow-wrap:break-word}
+    .leaflet-popup-content-wrapper{max-width:84vw}
+    .pop .px{overflow-wrap:break-word}
     .leaflet-container a.leaflet-popup-close-button{color:var(--muted);font-size:20px;padding:6px 8px 0 0}
     .pop .pt{color:var(--dim);font:700 11px ui-monospace,Menlo,monospace;margin-bottom:4px}
     .pop .pl{margin-top:7px;color:#ffb48f;font-size:12px;font-weight:700}
@@ -415,6 +417,9 @@
   <style>
     .p2p-banner{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:905;max-width:92vw;background:var(--glass2);border:1px solid var(--cyan);color:var(--cyan);padding:7px 15px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.05em;box-shadow:0 10px 28px #000a;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #connectBtn:disabled{opacity:.5;cursor:default}
+    [id^="fl_"] .play{cursor:pointer}
+    .fl-playing .play{color:var(--cyan)!important;box-shadow:0 0 0 2px var(--cyan)}
+    @media(max-width:760px){.p2p-banner{top:auto;bottom:calc(var(--sheet,84px) + 52px);font-size:10.5px}}
   </style>
   <div id="p2pBanner" class="p2p-banner" style="display:none"></div>
 
@@ -1569,7 +1574,7 @@ function addIncident(entry,loc,g,saved){
   const inc=Object.assign({id:'i'+Date.now().toString(36)+(incSeq++),lat:g.lat,lon:g.lon,precise:g.precise,label:g.label||loc.label,time:+entry.time,lastAt:Date.now(),status:'active',resolvedAt:0,entries:[],units:new Set()},saved||{});
   inc.entries=inc.entries||[];inc.units=new Set(inc.units||[]);
   const line=saved?saved.line:lineFor(loc,g);inc.line=line||null;inc.inZone=incDist(inc)<=radiusM();
-  inc.marker=L.marker([inc.lat,inc.lon],{icon:pinIcon(inc),keyboard:false}).addTo(incidentLayer).bindPopup(()=>{const e=inc.entries[inc.entries.length-1];return e?callPopup(e,{label:inc.label,precise:inc.precise}):esc(inc.label)},{maxWidth:300,...popPad()});
+  inc.marker=L.marker([inc.lat,inc.lon],{icon:pinIcon(inc),keyboard:false}).addTo(incidentLayer).bindPopup(()=>{const e=inc.entries[inc.entries.length-1];return e?callPopup(e,{label:inc.label,precise:inc.precise}):esc(inc.label)},{maxWidth:Math.min(300,innerWidth-36),...popPad()});
   inc.marker.on('click',()=>focusIncident(inc,true));inc.marker.on('popupclose',()=>{if(focusedInc===inc)focusIncident(null)});
   setIncLine(inc,line);
   incidents.push(inc);
@@ -2885,7 +2890,7 @@ async function play(){
   listening=true;btn.textContent='STOP';btn.disabled=false;keepAwake(true);
   if(!$('optSound').checked)state('LIVE · MUTED',true);
 }
-function stop(){listening=false;SEG.running=false;stopTabCapture();pbStop();stopSound();keepAwake(false);state('STOPPED');$('start').textContent='START LISTENING';$('lvl').style.width='0';}
+function stop(){listening=false;SEG.running=false;stopTabCapture();pbStop();stopSound();keepAwake(false);state('STOPPED');$('start').textContent='START LISTENING';$('lvl').style.width='0';try{if(P2P.mode==='host')p2pStop()}catch{}}
 $('start').onclick=()=>listening?stop():play();
 $('optSound').onchange=()=>{store.set('sound',$('optSound').checked);if(TAB.out)TAB.out.gain.value=TAB.local&&$('optSound').checked?1:0;if(!listening)return;if(TAB.stream){state($('optSound').checked||!TAB.local?'LIVE · VIA BROADCASTIFY TAB':'LIVE · MUTED',true);return}if($('optSound').checked){if(captured)startSound().catch(()=>{});else pbStart()}else{pbStop();if(!captured)stopSound();state('LIVE · MUTED',true)}};
 $('optDouble').onchange=()=>store.set('double',$('optDouble').checked);
@@ -3027,7 +3032,7 @@ async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Startin
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(()=>reg(id),30000);startHostSync();hostBanner();p2pPaintButtons()});
-  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{if(JSON.parse(d).type==='hello')sendSnapshot(conn)}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);if(m.type==='hello')sendSnapshot(conn);else if(m.type==='clipReq')sendClip(conn,m.id)}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
@@ -3044,6 +3049,8 @@ function sendSnapshot(conn){try{
   const is=incidents.map(snapInc);for(let i=0;i<is.length;i+=20)conn.send(JSON.stringify({type:'incs',incs:is.slice(i,i+20)}));
   const ls=lines.map(snapLine);for(let i=0;i<ls.length;i+=12)conn.send(JSON.stringify({type:'lines',lines:ls.slice(i,i+12)}));
 }catch{}}
+function blobToDataUrl(blob){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res(null);r.readAsDataURL(blob)})}
+async function sendClip(conn,id){let blob=null;const e=lines.find(x=>x.id===id);try{blob=e&&e.clipAudio?encodeWav(e.clipAudio):await ClipDB.get(id)}catch{}if(!blob){try{conn.send(JSON.stringify({type:'clip',id,url:null}))}catch{}return}const url=await blobToDataUrl(blob);try{conn.send(JSON.stringify({type:'clip',id,url}))}catch{}}
 
 async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Looking for a host…');let peerId=null;
   try{peerId=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
@@ -3055,22 +3062,31 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
     conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello'}))}catch{}p2pStatus('Following host · live');p2pPaintButtons()});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{clearTimeout(deadline);p2pStatus('Host went offline.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},3000)});
+    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — now listening on this device.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4500);try{play()}catch{}});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
   P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Waiting for calls to come in…</div>'}
-function exitFollow(){$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
+function exitFollow(){try{stopFollowAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
 function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
   else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
-  else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc)}
+  else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc);
+  else if(msg.type==='clip')onClip(msg.id,msg.url)}
+// Followers can press play on a mirrored line; the clip is fetched from the host on demand.
+const followClips=new Map(),followPending=new Set();let followAudio=null,followPlayingId=null;
+function markPlay(id,on){const el=document.getElementById('fl_'+id);if(el)el.classList.toggle('fl-playing',on)}
+function stopFollowAudio(){if(followAudio){try{followAudio.pause()}catch{}followAudio=null}if(followPlayingId){markPlay(followPlayingId,false);followPlayingId=null}}
+function startFollowAudio(id,url){stopFollowAudio();followAudio=new Audio(url);followPlayingId=id;markPlay(id,true);followAudio.onended=stopFollowAudio;followAudio.play().catch(()=>stopFollowAudio())}
+function followPlay(id){if(followPlayingId===id){stopFollowAudio();return}if(followClips.has(id)){startFollowAudio(id,followClips.get(id));return}stopFollowAudio();followPending.add(id);markPlay(id,true);if(P2P.hostConn&&P2P.hostConn.open){try{P2P.hostConn.send(JSON.stringify({type:'clipReq',id}))}catch{}}}
+function onClip(id,url){const wanted=followPending.delete(id);if(url){followClips.set(id,url);if(wanted)startFollowAudio(id,url)}else if(wanted){markPlay(id,false)}}
+$('transcript').addEventListener('click',e=>{if(P2P.mode!=='follow')return;const fl=e.target.closest('[id^="fl_"]');if(!fl)return;if(e.target.closest('.play')){e.stopPropagation();e.preventDefault();followPlay(fl.id.slice(3))}});
 function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();const fw=$('followWait');if(fw)fw.remove();let el=document.getElementById('fl_'+l.id);
   if(!el){el=document.createElement('div');el.id='fl_'+l.id;el.dataset.ts=l.ts;let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<l.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el)}
   el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
 function applyInc(s){let r=P2P.followIncs.get(s.id);
   if(s.gone){if(r){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.delete(s.id);return}
   if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map)}catch{}}
-  try{r.marker.setLatLng([s.lat,s.lon]);r.marker.setIcon(L.divIcon({className:'',iconSize:[s.size,s.size],iconAnchor:[s.size/2,s.size/2],popupAnchor:[0,-s.size/2],html:s.iconHtml}));if(s.popup)r.marker.bindPopup(s.popup,popPad())}catch{}
+  try{r.marker.setLatLng([s.lat,s.lon]);r.marker.setIcon(L.divIcon({className:'',iconSize:[s.size,s.size],iconAnchor:[s.size/2,s.size/2],popupAnchor:[0,-s.size/2],html:s.iconHtml}));if(s.popup)r.marker.bindPopup(s.popup,{maxWidth:Math.min(300,innerWidth-36),...popPad()})}catch{}
   try{r.lg.clearLayers();if(s.line&&s.lineColors)s.lineColors.forEach((c,i)=>r.lg.addLayer(L.polyline(s.line,{color:c,weight:6,opacity:.9,dashArray:i?'14 14':null})))}catch{}}
 function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);if(P2P.mode==='host')fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{});if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
 $('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
