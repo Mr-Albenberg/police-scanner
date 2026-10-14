@@ -255,7 +255,7 @@
     .line.resolved .x{color:#b7cad3}
     #errbar{display:none;position:fixed;z-index:2900;left:50%;transform:translateX(-50%);top:calc(var(--top) + 78px);width:min(560px,calc(100% - 24px));padding:10px 12px;border:1px solid var(--red);border-radius:9px;background:#3a0c14f2;color:#ffc2c8;font-size:13px;line-height:1.45}
     #errbar button{margin:6px 6px 0 0;min-height:28px;padding:0 9px;font-size:10px}
-    #toast{position:fixed;z-index:3000;top:var(--top);left:50%;transform:translate(-50%,-160%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#3a0c14f2;border:1px solid var(--red);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
+    #toast{position:fixed;z-index:3000;top:82px;left:50%;transform:translate(-50%,-320%);transition:transform .35s;width:min(560px,calc(100% - 24px));padding:13px 16px;background:#3a0c14f2;border:1px solid var(--red);border-radius:10px;box-shadow:0 16px 50px #000c;cursor:pointer}
     #toast.show{transform:translate(-50%,0)}
     #toast b{display:block;color:#ff9aa4;font-size:10px;letter-spacing:.16em;margin-bottom:5px}
     #toast span{font-size:14px;line-height:1.45}
@@ -300,7 +300,8 @@
       /* zone picker: a bubble on the right, under the top account bubble */
       #side{top:calc(var(--top) + 184px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
       body.np-open #side{top:calc(var(--top) + 270px)} /* drop below the notify prompt */
-      #notifPrompt{top:calc(var(--top) + 176px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
+      #notifPrompt{top:calc(var(--top) + 184px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
+      #toast{top:calc(var(--top) + 184px)} /* clear of the taller mobile header */
       #zone{transition:width .2s ease}
       .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
       .zpin svg{width:21px;height:21px}
@@ -496,7 +497,7 @@
     </div>
   </header>
   <style>
-    .p2p-banner{position:fixed;top:66px;left:50%;transform:translateX(-50%);z-index:905;max-width:92vw;background:var(--glass2);border:1px solid var(--cyan);color:var(--cyan);padding:7px 15px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.05em;box-shadow:0 10px 28px #000a;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .p2p-banner{position:fixed;top:82px;left:50%;transform:translateX(-50%);z-index:905;max-width:92vw;background:var(--glass2);border:1px solid var(--cyan);color:var(--cyan);padding:7px 15px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.05em;box-shadow:0 10px 28px #000a;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #connectBtn:disabled{opacity:.5;cursor:default}
     [id^="fl_"] .play{cursor:pointer}
     .fl-playing .play{color:var(--cyan)!important;box-shadow:0 0 0 2px var(--cyan)}
