@@ -308,6 +308,7 @@ async function handleAuth(request, env, url, origin) {
   }
 
   if (url.pathname === '/auth/forgot' && request.method === 'POST') {
+    return err(503, 'Password reset is disabled right now.'); // temporarily off
     if (!env.RESEND_API_KEY) return err(503, 'Password-reset email is not set up on this relay yet.');
     let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
     // Always respond the same way so the form can't probe which emails have accounts.
@@ -326,6 +327,7 @@ async function handleAuth(request, env, url, origin) {
   }
 
   if (url.pathname === '/auth/reset' && request.method === 'POST') {
+    return err(503, 'Password reset is disabled right now.'); // temporarily off
     let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
     const uname = await resolveAccount(b.account);
     const code = String(b.code || '').trim();
