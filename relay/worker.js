@@ -448,6 +448,25 @@ async function handleFeed(request, env, url, origin) {
   if (!env.USERS) return ok({ error: 'not configured' }, 503);
   const uname = await sessionUser(env, request);
   if (!uname) return ok({ error: 'not signed in' }, 401);
+
+  // Audio clip for a synced call: publisher uploads, idle devices fetch on play.
+  if (url.pathname === '/feed/clip') {
+    if (request.method === 'GET') {
+      const id = url.searchParams.get('id') || '';
+      const u = id ? await env.USERS.get('fclip:' + id) : null;
+      return ok({ url: u || null });
+    }
+    if (request.method === 'POST') {
+      let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
+      const id = String(b.id || ''); const u = String(b.url || '');
+      if (!id || !u) return ok({ error: 'id and url required' }, 400);
+      if (u.length > 700000) return ok({ ok: true, skipped: 'too large' }); // ~500KB clip cap
+      await env.USERS.put('fclip:' + id, u, { expirationTtl: 900 });
+      return ok({ ok: true });
+    }
+    return ok({ error: 'method' }, 405);
+  }
+
   const ROOM = 'feed:room';
   if (request.method === 'GET') {
     const since = +url.searchParams.get('since') || 0;
@@ -500,7 +519,7 @@ export default {
     }
 
     // Shared cross-account call feed (publish while listening / poll while idle).
-    if (url.pathname === '/feed') {
+    if (url.pathname === '/feed' || url.pathname === '/feed/clip') {
       try { return await handleFeed(request, env, url, origin); }
       catch (e) {
         return new Response(JSON.stringify({ error: 'feed error: ' + String((e && e.message) || e) }),

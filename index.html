@@ -3212,8 +3212,15 @@ async function pushSync(){ // zone or radius changed — update the stored zone
 // Header = the address; body = "Type: what's happening, code 3".
 function bestComplaint(inc){let b='';for(const e of inc.entries||[])if(e.complaint&&String(e.complaint).length>b.length)b=String(e.complaint);return b}
 function hasCode3(inc){return (inc.entries||[]).some(e=>/\bcode\s*3\b/i.test(e.text||''))}
-function notifReady(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return !!(inc.label&&svcs.length&&bestComplaint(inc))} // address + type + what's happening
-function notifSig(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return (inc.entries?inc.entries.length:0)+'|'+(inc.label||'')+'|'+svcs.join(',')+'|'+bestComplaint(inc)+'|'+(hasCode3(inc)?'3':'')}
+// "Complete" = address + what it's about + who's involved. Send as soon as all
+// three are known; otherwise hold (up to the 60s cap) and send what we have.
+function notifReady(inc){
+  if(!inc.label)return false;                        // address
+  const what=bestComplaint(inc);if(!what)return false; // what it's about
+  const blob=what+' '+(inc.entries||[]).map(e=>e.text||'').join(' ');
+  const who=!!bestVehicle(inc)||/\b\d{1,3}\s*(?:yo|y\/o|year|yr)\b|\b(male|female|man|woman|subject|suspect|victim|driver|pedestrian|juvenile|elderly|child|rp|reporting party|people|persons?)\b/i.test(blob);
+  return who;                                        // who's involved
+}
 function bestVehicle(inc){for(const e of (inc.entries||[]).slice().reverse())if(e.vehicle&&String(e.vehicle).length<44)return String(e.vehicle);return''}
 function incUnitList(inc){try{return inc.units?[...inc.units].filter(Boolean).slice(0,5):[]}catch{return[]}}
 function notifContent(inc){
@@ -3248,23 +3255,18 @@ async function localNotify(inc,c){
 }
 // Hold a new call for up to a minute so the address, type and details fill in;
 // fire as soon as it has them and has gone quiet, or at the 60s cap regardless.
-const NOTIF_SETTLE=10000, NOTIF_MAX=50000; // fire ~10s after info stops arriving; 50s hard cap
+const NOTIF_MAX=60000; // never wait longer than a minute
 function alertScan(){
   if(!store.get('authToken'))return;
   const now=Date.now();
   for(const inc of incidents){
     if(inc.alerted||inc.status!=='active'||!isFinite(inc.lat)||!isFinite(inc.lon))continue;
     inc.notifFirst=inc.notifFirst||now;
-    const sig=notifSig(inc);
-    if(sig!==inc._notifSig){inc._notifSig=sig;inc.notifChange=now}
-    const settled=now-(inc.notifChange||now)>=NOTIF_SETTLE;
     const capped=now-inc.notifFirst>=NOTIF_MAX;
-    if((notifReady(inc)&&settled)||capped){
+    if(notifReady(inc)||capped){ // full info, or a minute has passed
       inc.alerted=true;
       if(linkMode()==='always'||P2P.mode!=='off'){ // 'host' mode: only alert in a P2P session
-        const c=notifContent(inc);
-        reportAlert(inc,c);
-        if(inc.inZone)localNotify(inc,c);
+        try{const c=notifContent(inc);reportAlert(inc,c);if(inc.inZone)localNotify(inc,c)}catch{}
       }
     }
   }
@@ -3357,9 +3359,9 @@ const followClips=new Map(),followPending=new Set();let followAudio=null,followP
 function markPlay(id,on){const el=document.getElementById('fl_'+id);if(el)el.classList.toggle('fl-playing',on)}
 function stopFollowAudio(){if(followAudio){try{followAudio.pause()}catch{}followAudio=null}if(followPlayingId){markPlay(followPlayingId,false);followPlayingId=null}}
 function startFollowAudio(id,url){stopFollowAudio();followAudio=new Audio(url);followPlayingId=id;markPlay(id,true);followAudio.onended=stopFollowAudio;followAudio.play().catch(()=>stopFollowAudio())}
-function followPlay(id){if(followPlayingId===id){stopFollowAudio();return}if(followClips.has(id)){startFollowAudio(id,followClips.get(id));return}stopFollowAudio();followPending.add(id);markPlay(id,true);if(P2P.hostConn&&P2P.hostConn.open){try{P2P.hostConn.send(JSON.stringify({type:'clipReq',id}))}catch{}}}
+function followPlay(id){if(followPlayingId===id){stopFollowAudio();return}if(followClips.has(id)){startFollowAudio(id,followClips.get(id));return}stopFollowAudio();followPending.add(id);markPlay(id,true);if(P2P.hostConn&&P2P.hostConn.open){try{P2P.hostConn.send(JSON.stringify({type:'clipReq',id}))}catch{}}else{feedFetchClip(id)}}
 function onClip(id,url){const wanted=followPending.delete(id);if(url){followClips.set(id,url);if(wanted)startFollowAudio(id,url)}else if(wanted){markPlay(id,false)}}
-$('transcript').addEventListener('click',e=>{if(P2P.mode!=='follow')return;const fl=e.target.closest('[id^="fl_"]');if(!fl)return;if(e.target.closest('.play')){e.stopPropagation();e.preventDefault();followPlay(fl.id.slice(3))}});
+$('transcript').addEventListener('click',e=>{if(P2P.mode!=='follow'&&!(typeof FEED!=='undefined'&&FEED.viewOn))return;const fl=e.target.closest('[id^="fl_"]');if(!fl)return;if(e.target.closest('.play')){e.stopPropagation();e.preventDefault();followPlay(fl.id.slice(3))}});
 function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();const fw=$('followWait');if(fw)fw.remove();let el=document.getElementById('fl_'+l.id);
   if(!el){el=document.createElement('div');el.id='fl_'+l.id;el.dataset.ts=l.ts;let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<l.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el)}
   el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
@@ -3372,7 +3374,7 @@ function applyInc(s){let r=P2P.followIncs.get(s.id);
 // linkMode 'always': a listening device publishes its calls to the shared feed
 // and idle devices pull + render them, so calls sync between accounts with no
 // P2P host. 'host': only the manual HOST/CONNECT session shares calls.
-const FEED={pub:null,poll:null,cursor:0,sentL:{},sentI:{},viewOn:false};
+const FEED={pub:null,poll:null,cursor:0,sentL:{},sentI:{},sentClips:{},viewOn:false};
 function linkMode(){return store.get('linkMode')||'always'}
 function feedOn(){return linkMode()==='always'&&!!store.get('authToken')}
 function isListening(){try{return !!listening}catch{return false}}
@@ -3380,12 +3382,23 @@ function feedStart(){if(FEED.pub)return;FEED.pub=setInterval(feedPub,1700);FEED.
 function feedReset(){FEED.cursor=0;FEED.sentL={};FEED.sentI={}}
 async function feedPub(){
   if(!feedOn()||!isListening())return;
-  let items=[];
+  let items=[],newLines=[];
   try{
-    for(const e of lines){if(!e.el)continue;const s=snapLine(e);const sig=s.cls+'|'+s.style+'|'+s.html;if(FEED.sentL[s.id]!==sig){FEED.sentL[s.id]=sig;items.push({k:'line',id:'L'+s.id,ts:s.ts||Date.now(),data:s})}}
+    for(const e of lines){if(!e.el)continue;const s=snapLine(e);const sig=s.cls+'|'+s.style+'|'+s.html;if(FEED.sentL[s.id]!==sig){FEED.sentL[s.id]=sig;items.push({k:'line',id:'L'+s.id,ts:s.ts||Date.now(),data:s});newLines.push(e)}}
     for(const inc of incidents){const s=snapInc(inc);const sig=JSON.stringify(s);if(FEED.sentI[s.id]!==sig){FEED.sentI[s.id]=sig;items.push({k:'inc',id:'I'+s.id,ts:Date.now(),data:s})}}
   }catch{return}
   for(let i=0;i<items.length;i+=25){try{await fetch(AUTH_BASE+'/feed',{method:'POST',headers:authHdr(),body:JSON.stringify({items:items.slice(i,i+25)})})}catch{}}
+  for(const e of newLines)feedUploadClip(e); // best-effort: share the audio so idle devices can replay
+}
+async function feedUploadClip(e){
+  if(!e||FEED.sentClips[e.id])return;FEED.sentClips[e.id]=1;
+  let blob=null;try{blob=e.clipAudio?encodeWav(e.clipAudio):await ClipDB.get(e.id)}catch{}
+  if(!blob||blob.size>480000)return; // ~480KB cap
+  let url;try{url=await blobToDataUrl(blob)}catch{}if(!url)return;
+  try{await fetch(AUTH_BASE+'/feed/clip',{method:'POST',headers:authHdr(),body:JSON.stringify({id:String(e.id),url})})}catch{}
+}
+async function feedFetchClip(id){
+  try{const r=await fetch(AUTH_BASE+'/feed/clip?id='+encodeURIComponent(id),{headers:authHdr()});const j=await r.json();onClip(id,j&&j.url||null)}catch{onClip(id,null)}
 }
 function feedClearView(){
   if(P2P.mode!=='off'||!FEED.viewOn)return; // never disturb a live P2P session's view
