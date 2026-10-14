@@ -157,7 +157,7 @@
     .mapbar button .ic{width:19px;height:19px;color:var(--cyan)}
     .mapbar button:hover{filter:none;border-color:var(--cyan);background:#0b2232f0}
     /* mobile notification prompt */
-    #notifPrompt{position:fixed;z-index:1600;top:calc(var(--top,8px) + 176px);left:10px;right:10px;display:none;align-items:center;gap:10px;padding:10px 12px;background:#0b2232f7;border:1px solid var(--cyan);border-radius:12px;box-shadow:0 12px 30px #000a;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+    #notifPrompt{position:fixed;z-index:1600;top:72px;left:50%;transform:translateX(-50%);width:min(440px,calc(100vw - 20px));display:none;align-items:center;gap:10px;padding:10px 12px;background:#0b2232f7;border:1px solid var(--cyan);border-radius:12px;box-shadow:0 12px 30px #000a;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
     #notifPrompt.show{display:flex}
     #notifPrompt .np-ic{font-size:20px;line-height:1}
     #notifPrompt .np-txt{flex:1;min-width:0}
@@ -300,6 +300,7 @@
       /* zone picker: a bubble on the right, under the top account bubble */
       #side{top:calc(var(--top) + 184px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
       body.np-open #side{top:calc(var(--top) + 270px)} /* drop below the notify prompt */
+      #notifPrompt{top:calc(var(--top) + 176px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
       #zone{transition:width .2s ease}
       .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
       .zpin svg{width:21px;height:21px}
@@ -3183,7 +3184,7 @@ function maybeAutoEnable(){
 function isMobileView(){return matchMedia('(max-width:760px)').matches}
 function hideNotifPrompt(){const p=$('notifPrompt');if(p)p.classList.remove('show');document.body.classList.remove('np-open')}
 function showNotifPrompt(){
-  const p=$('notifPrompt');if(!p||!isMobileView())return;
+  const p=$('notifPrompt');if(!p)return;
   if(!store.get('authToken')||store.get('pushOff')==='1'||store.get('notifDismiss')==='1')return;
   if(!('Notification'in window)||!('PushManager'in window))return;
   if(Notification.permission==='granted'){hideNotifPrompt();return}
@@ -3201,7 +3202,22 @@ async function pushSync(){ // zone or radius changed — update the stored zone
 // Any signed-in running device reports located active calls; the relay fans a
 // push out to every subscriber whose zone contains the call (deduped server-side).
 function reportAlert(inc){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:inc.label||'',title:inc.label?('Call near '+inc.label):'Call in your zone'})}).catch(()=>{})}
-function alertScan(){if(!store.get('authToken'))return;for(const inc of incidents){if(inc.status==='active'&&!inc.alerted&&isFinite(inc.lat)&&isFinite(inc.lon)){inc.alerted=true;reportAlert(inc)}}}
+// Same call-key the relay uses, so a local notification and the server push
+// share a tag and don't double-pop on a device that's running AND subscribed.
+async function callKeyOf(lat,lon,text){
+  const str=lat.toFixed(3)+','+lon.toFixed(3)+'|'+String(text||'').slice(0,40);
+  const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'').slice(0,24);
+}
+// Instant notification on THIS device (host or an open computer) for an in-zone
+// call — doesn't wait on the push round-trip. Closed devices still get the push.
+async function localNotify(inc){
+  if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
+  const reg=swReg||await initSW();if(!reg)return;
+  try{const tag=await callKeyOf(inc.lat,inc.lon,inc.label||'');
+    reg.showNotification(inc.label?('Call near '+inc.label):'Call in your zone',{body:(inc.label?inc.label+' — ':'')+'a call just dropped in your zone.',tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href}})}catch{}
+}
+function alertScan(){if(!store.get('authToken'))return;for(const inc of incidents){if(inc.status==='active'&&!inc.alerted&&isFinite(inc.lat)&&isFinite(inc.lon)){inc.alerted=true;reportAlert(inc);if(inc.inZone)localNotify(inc)}}}
 function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,4000)}
 function initPushAlerts(){
   paintPush();initSW();
