@@ -301,7 +301,7 @@
       #side{top:calc(var(--top) + 184px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
       body.np-open #side{top:calc(var(--top) + 270px)} /* drop below the notify prompt */
       #notifPrompt{top:calc(var(--top) + 184px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
-      #toast{top:calc(var(--top) + 184px)} /* clear of the taller mobile header */
+      #toast{display:none} /* phones: the red screen edge signals in-zone activity instead */
       #zone{transition:width .2s ease}
       .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
       .zpin svg{width:21px;height:21px}
@@ -3237,7 +3237,7 @@ function notifContent(inc){
 }
 // Any signed-in running device reports located active calls; the relay fans a
 // push out to every subscriber whose zone contains the call (deduped server-side).
-function reportAlert(inc,c){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:c.body,title:c.title})}).catch(()=>{})}
+function reportAlert(inc,c){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:c.body,title:c.title,href:location.href.split('#')[0].split('?')[0]})}).catch(()=>{})}
 // Same call-key the relay uses, so a local notification and the server push
 // share a tag and don't double-pop on a device that's running AND subscribed.
 async function callKeyOf(lat,lon,text){
@@ -3251,8 +3251,24 @@ async function localNotify(inc,c){
   if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
   const reg=swReg||await initSW();if(!reg)return;
   try{const tag=await callKeyOf(inc.lat,inc.lon,c.body);
-    reg.showNotification(c.title,{body:c.body,tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href}})}catch{}
+    reg.showNotification(c.title,{body:c.body,tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href.split('?')[0],call:{lat:inc.lat,lon:inc.lon}}})}catch{}
 }
+// Jump the map/transcript to a call (from a tapped notification), like clicking it.
+function focusCallAt(c){
+  if(!c||!isFinite(c.lat)||!isFinite(c.lon)||typeof map==='undefined')return;
+  try{
+    let best=null,bd=1e9;
+    for(const inc of incidents){if(inc.gone)continue;const d=dist([inc.lat,inc.lon],[c.lat,c.lon]);if(d<bd){bd=d;best=inc}}
+    if(best&&bd<400){
+      if(best.line)map.fitBounds(L.latLngBounds(best.line.flat()),{maxZoom:16,...fitPad()});
+      else map.setView([best.lat,best.lon],Math.max(map.getZoom(),15));
+      try{best.marker.openPopup()}catch{}try{focusIncident(best,true)}catch{}
+    }else{map.setView([c.lat,c.lon],16)}
+    if(innerWidth<=760&&typeof setSheet==='function')setSheet(false);
+  }catch{}
+}
+function handleFocusParam(){const m=location.search.match(/[?&]call=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);if(!m)return;const c={lat:+m[1],lon:+m[2]};setTimeout(()=>focusCallAt(c),1400);setTimeout(()=>focusCallAt(c),4500);try{history.replaceState(null,'',location.pathname)}catch{}}
+if('serviceWorker'in navigator)try{navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='focusCall')focusCallAt(e.data.call)})}catch{}
 // Hold a new call for up to a minute so the address, type and details fill in;
 // fire as soon as it has them and has gone quiet, or at the 60s cap regardless.
 const NOTIF_MAX=60000; // never wait longer than a minute
@@ -3292,6 +3308,7 @@ function initPushAlerts(){
   const ne=$('notifEnable');if(ne)ne.onclick=async()=>{const okv=await pushEnable();if(okv||(('Notification'in window)&&Notification.permission==='denied'))hideNotifPrompt()};
   const nd=$('notifDismiss');if(nd)nd.onclick=()=>{store.set('notifDismiss','1');hideNotifPrompt()};
   try{initLinkMode()}catch{}
+  try{handleFocusParam()}catch{} // open a call tapped from a notification
   if(store.get('authToken')){startReporting();try{feedStart()}catch{}}
   maybeAutoEnable(); // auto-subscribe this device if permission was already granted
   setTimeout(showNotifPrompt,1200); // explicit mobile ask

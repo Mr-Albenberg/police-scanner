@@ -411,6 +411,7 @@ async function handlePush(request, env, url, origin) {
     if (!isFinite(lat) || !isFinite(lon)) return err(400, 'lat/lon required');
     const text = String(b.text || '').slice(0, 300);
     const title = String(b.title || 'Call in your zone').slice(0, 80);
+    const href = String(b.href || origin).slice(0, 300); // app URL to open on click
     const callKey = await sha256Id(lat.toFixed(3) + ',' + lon.toFixed(3) + '|' + text.slice(0, 40));
     if (await env.USERS.get('aseen:' + callKey)) return ok({ ok: true, dedup: true });
     await env.USERS.put('aseen:' + callKey, '1', { expirationTtl: 300 });
@@ -424,7 +425,7 @@ async function handlePush(request, env, url, origin) {
       const last = await env.USERS.get('prate:' + k.name);
       if (last && now - (+last) < 30000) return; // at most one push / 30s / device
       try {
-        const st = await sendPush(env, sub, { title, body: text || 'A call just dropped in your zone.', tag: callKey, url: origin });
+        const st = await sendPush(env, sub, { title, body: text || 'A call just dropped in your zone.', tag: callKey, url: href, call: { lat, lon } });
         if (st === 201 || st === 200) { sent++; await env.USERS.put('prate:' + k.name, String(now), { expirationTtl: 300 }); }
         else if (st === 404 || st === 410) await env.USERS.delete(k.name);
       } catch {}

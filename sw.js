@@ -13,18 +13,28 @@ self.addEventListener('push', (e) => {
     icon: './logo.png',
     badge: './favicon-32.png',
     vibrate: [120, 60, 120],
-    data: { url: d.url || './' },
+    data: { url: d.url || './', call: d.call || null }, // call = {lat, lon} to open on click
   };
   e.waitUntil(self.registration.showNotification(title, opts));
 });
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const target = (e.notification.data && e.notification.data.url) || './';
-  e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cl) => {
-      for (const c of cl) { if ('focus' in c) return c.focus(); }
-      if (self.clients.openWindow) return self.clients.openWindow(target);
-    })
-  );
+  const data = e.notification.data || {};
+  let target = data.url || './';
+  if (data.call && typeof data.call.lat === 'number') {
+    // carry the call location so the page can jump straight to it
+    target += (target.indexOf('?') >= 0 ? '&' : '?') + 'call=' + data.call.lat + ',' + data.call.lon;
+  }
+  e.waitUntil((async () => {
+    const cl = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of cl) {
+      if ('focus' in c) {
+        await c.focus();
+        if (data.call) { try { c.postMessage({ type: 'focusCall', call: data.call }); } catch {} }
+        return;
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target);
+  })());
 });
