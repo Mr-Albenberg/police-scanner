@@ -381,7 +381,7 @@
           <button type="button" id="rsSend">SEND CODE</button>
         </div>
         <div id="rsStep2" hidden>
-          <p class="auth-note">Step 2 of 2 · enter the code from your email and a new password.</p>
+          <p class="auth-note" id="rsSentMsg">Step 2 of 2 · enter the code from your email and a new password.</p>
           <input id="rsCode" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" spellcheck="false">
           <input id="rsPass" type="password" placeholder="New password (8+ characters)" autocomplete="new-password">
           <div class="auth-err" id="rsErr2"></div>
@@ -2499,7 +2499,13 @@ $('rsSend').onclick=async()=>{authErr('rsErr1','');const acct=$('rsAcct').value.
   if(!acct)return authErr('rsErr1','Enter your username or email.');
   const b=$('rsSend');b.disabled=true;authErr('rsErr1','Sending…',true);
   try{await authFetch('/auth/forgot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:acct})});
-    authErr('rsErr1','');rsStep(2);authErr('rsErr2','If an account matches, a code is on its way. Check your email.',true);try{$('rsCode').focus()}catch{}}
+    authErr('rsErr1','');
+    const isEmail=acct.includes('@');
+    $('rsSentMsg').innerHTML=(isEmail
+      ? 'We sent a 6-digit code to <b>'+acct.replace(/[<>&]/g,'')+'</b>.'
+      : 'If that account exists, we emailed a 6-digit code to the address on file.')
+      +'<br><span style="opacity:.8">It can take a minute — <b>check your spam/junk folder</b> if you don\'t see it. Codes expire in 15 minutes.</span>';
+    rsStep(2);authErr('rsErr2','');try{$('rsCode').focus()}catch{}}
   catch(err){authErr('rsErr1',err.message)}b.disabled=false};
 $('rsBack').onclick=()=>{authErr('rsErr2','');rsStep(1)};
 $('authResetForm').addEventListener('submit',async e=>{e.preventDefault();authErr('rsErr2','');

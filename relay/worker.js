@@ -104,7 +104,7 @@ async function sessionUser(env, request) {
 // Send a password-reset code by email via Resend. Needs RESEND_API_KEY and,
 // to reach arbitrary recipients, RESET_FROM on a domain verified in Resend.
 async function sendResetEmail(env, to, username, code) {
-  const from = String(env.RESET_FROM || 'Dispatch Watch <onboarding@resend.dev>').trim();
+  const from = String(env.RESET_FROM || 'Dispatch Watch <onboarding@resend.dev>').replace(/^﻿/, '').trim();
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;background:#0a1824;color:#eaf6fb;padding:26px;border-radius:14px;max-width:440px;margin:auto">
     <div style="color:#8fe9ff;font-weight:800;letter-spacing:.12em;font-size:13px">SLO // DISPATCH WATCH</div>
     <p style="color:#9db8c7;margin:10px 0 18px">Password reset for <b style="color:#eaf6fb">${username}</b></p>
@@ -114,7 +114,7 @@ async function sendResetEmail(env, to, username, code) {
   </div>`;
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + String(env.RESEND_API_KEY).trim(), 'Content-Type': 'application/json' },
+    headers: { Authorization: 'Bearer ' + String(env.RESEND_API_KEY).replace(/^﻿/, '').trim(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to, subject: 'Your Dispatch Watch reset code: ' + code, html }),
   });
   if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text()).slice(0, 200));
