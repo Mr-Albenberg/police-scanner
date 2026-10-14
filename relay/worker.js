@@ -45,7 +45,7 @@ async function bcfyMint(env, feedId) {
 
 function cors(origin) {
   return {
-    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Origin': origin || '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Expose-Headers': 'retry-after, x-ratelimit-remaining-requests, x-ratelimit-reset-requests',
@@ -495,9 +495,11 @@ async function handleFeed(request, env, url, origin) {
 
 export default {
   async fetch(request, env) {
+    // Accept any origin so the app works from any URL, device or installed PWA
+    // (that's what caused "failed to fetch" on sign-in from other URLs). Auth
+    // needs real credentials and uses bearer tokens, not cookies, so echoing the
+    // request's origin back is safe here.
     const origin = request.headers.get('Origin') || '';
-    const okOrigin = ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGIN_RE.some((re) => re.test(origin));
-    if (!okOrigin) return new Response('Forbidden', { status: 403 });
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     const url = new URL(request.url);
 
