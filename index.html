@@ -11,9 +11,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Dispatch Watch">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" type="image/webp" href="logo.webp">
+  <link rel="icon" type="image/png" href="logo.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-  <link rel="apple-touch-icon" href="logo.webp">
+  <link rel="apple-touch-icon" href="logo.png">
   <link rel="preconnect" href="https://server.arcgisonline.com">
   <link rel="preconnect" href="https://hls-o2.broadcastify.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -45,7 +45,7 @@
     #map{position:fixed;inset:0;background:#0c1418;z-index:0}
     header{position:fixed;z-index:1000;top:var(--top);left:var(--gap);right:var(--gap);display:flex;align-items:center;gap:16px;padding:9px 12px 9px 16px}
     .brand{display:flex;align-items:center;gap:11px;min-width:0}
-    .logo{width:36px;height:36px;flex:0 0 auto;border-radius:50%;display:block;background:#fff}
+    .logo{width:36px;height:36px;flex:0 0 auto;border-radius:50%;display:block}
     .beacon{width:11px;height:11px;flex:0 0 auto;border-radius:50%;background:#6d8290}
     .beacon.live{background:var(--green);box-shadow:0 0 16px #53ebb0cc}
     .eyebrow{color:var(--cyan);font-size:10px;font-weight:850;letter-spacing:.18em}
@@ -316,7 +316,7 @@
     .auth-card{position:relative;width:min(434px,100%);background:linear-gradient(180deg,#0c1f30,#070f1a);border:1px solid #2d5a76;border-radius:20px;box-shadow:0 30px 120px #000d,0 0 0 1px #0ff1 inset,0 -1px 0 #5fdcff22 inset;padding:26px 24px 24px;max-height:calc(100% - 20px);overflow:auto}
     .auth-card::before{content:'';position:absolute;top:0;left:22px;right:22px;height:1.5px;background:linear-gradient(90deg,transparent,#5fdcff,transparent);opacity:.7}
     .auth-brand{display:flex;align-items:center;gap:11px;margin-bottom:18px;color:var(--cyan);font-weight:850;letter-spacing:.13em;font-size:13px}
-    .auth-brand img{height:36px;width:36px;border-radius:50%;background:#fff;filter:drop-shadow(0 0 12px #0cf6)}
+    .auth-brand img{height:36px;width:36px;border-radius:50%;filter:drop-shadow(0 0 12px #0cf6)}
     .auth-brand img{height:32px;width:auto;filter:drop-shadow(0 0 10px #0cf4)}
     .auth-view{display:flex;flex-direction:column;gap:12px}
     .auth-view[hidden]{display:none}
@@ -356,7 +356,7 @@
   </style>
   <div id="authGate" class="auth-gate" hidden>
     <div class="auth-card">
-      <div class="auth-brand"><img src="logo.webp" alt="" width="34" height="34"><span>DISPATCH WATCH</span></div>
+      <div class="auth-brand"><img src="logo.png" alt="" width="34" height="34"><span>DISPATCH WATCH</span></div>
 
       <form id="authLoginForm" class="auth-view">
         <div class="auth-title">SIGN IN</div>
@@ -424,7 +424,7 @@
 
   <header class="glass">
     <div class="brand">
-      <img class="logo" src="logo.webp" alt="" width="34" height="34">
+      <img class="logo" src="logo.png" alt="" width="34" height="34">
       <span id="beacon" class="beacon"></span>
       <div><div class="eyebrow">SLO // LIVE OPERATIONS</div><h1>DISPATCH WATCH</h1></div>
     </div>
@@ -1767,7 +1767,7 @@ function raiseAlert(title,body,latlon,zone=null){
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),15000);
   if(!alertsOn)return;
   if(zone&&$('optLoud').checked)alarm(zone);else{beep(4);navigator.vibrate&&navigator.vibrate([200,100,200])}
-  if('Notification'in window&&Notification.permission==='granted'){const opts={body,tag:'slo-dispatch',renotify:true,icon:'logo.webp'};(swReg?swReg.showNotification(title,opts):Promise.reject()).catch(()=>{try{new Notification(title,opts)}catch{}})}
+  if('Notification'in window&&Notification.permission==='granted'){const opts={body,tag:'slo-dispatch',renotify:true,icon:'logo.png'};(swReg?swReg.showNotification(title,opts):Promise.reject()).catch(()=>{try{new Notification(title,opts)}catch{}})}
 }
 
 /* ================================================================
