@@ -3222,7 +3222,20 @@ function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer
 function initPushAlerts(){
   paintPush();initSW();
   const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){store.del('pushOff');pushEnable().then(okv=>{if(!okv)t.checked=false})}else{store.set('pushOff','1');pushDisable()}};
-  const tb=$('pushTestBtn');if(tb)tb.onclick=async()=>{if(store.get('pushOn')!=='1'){setPushHint('Turn alerts on first, then test.');return}setPushHint('Sending a test…');try{const r=await fetch(AUTH_BASE+'/push/test',{method:'POST',headers:authHdr(),body:'{}'});const j=await r.json();setPushHint(j.sent?'Test sent — check your notifications.':'No device got it. Re-toggle alerts and try again.')}catch{setPushHint('Test failed — try again.')}};
+  const tb=$('pushTestBtn');if(tb)tb.onclick=async()=>{
+    if(!('Notification'in window)){setPushHint('This browser can’t show notifications.');return}
+    if(iosNeedsInstall()){setPushHint('On iPhone: add this to your Home Screen first, then test.');return}
+    if(Notification.permission!=='granted'){const okv=await pushEnable();if(!okv)return}
+    const reg=swReg||await initSW();
+    // 1) Local notification — tests THIS device directly (no server round-trip).
+    let localShown=false;
+    try{if(reg){await reg.showNotification('Police Scanner',{body:'Test alert — notifications work on this device.',tag:'slo-test',renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href}});localShown=true}}catch{}
+    if(!localShown){try{new Notification('Police Scanner',{body:'Test alert — notifications work on this device.'});localShown=true}catch{}}
+    // 2) Server push — tests delivery to this device while closed.
+    let pushed=null;try{const r=await fetch(AUTH_BASE+'/push/test',{method:'POST',headers:authHdr(),body:'{}'});pushed=(await r.json()).sent}catch{}
+    if(localShown)setPushHint(pushed?'Notifications work ✓ (shown now, and push delivered).':'Notification shown ✓ on this device. If you didn’t see it, check your OS notification settings / Focus mode.');
+    else setPushHint('Couldn’t show a notification — allow notifications for this site, and check that your browser is allowed to notify in your computer’s notification settings (and Focus/Do-Not-Disturb is off).');
+  };
   const ne=$('notifEnable');if(ne)ne.onclick=async()=>{const okv=await pushEnable();if(okv||(('Notification'in window)&&Notification.permission==='denied'))hideNotifPrompt()};
   const nd=$('notifDismiss');if(nd)nd.onclick=()=>{store.set('notifDismiss','1');hideNotifPrompt()};
   if(store.get('authToken'))startReporting();
