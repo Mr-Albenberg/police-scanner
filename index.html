@@ -327,8 +327,8 @@
     .auth-steps{display:flex;gap:7px;margin:-2px 0 4px}
     .auth-step{width:26px;height:4px;border-radius:2px;background:#20465c;transition:background .25s}
     .auth-step.on{background:linear-gradient(90deg,#5fdcff,#1fb0e0)}
-    #suStep1,#suStep2{display:flex;flex-direction:column;gap:12px}
-    #suStep1[hidden],#suStep2[hidden]{display:none}
+    #suStep1,#suStep2,#rsStep1,#rsStep2{display:flex;flex-direction:column;gap:12px}
+    #suStep1[hidden],#suStep2[hidden],#rsStep1[hidden],#rsStep2[hidden]{display:none}
     .auth-btn-row{display:flex;gap:9px;margin-top:2px}
     .auth-btn-row #suBack{flex:0 0 auto;width:88px}
     .auth-btn-row #suBtn{flex:1}
@@ -366,7 +366,29 @@
         <button type="submit" id="liBtn">SIGN IN</button>
         <div class="auth-links">
           <button type="button" class="linkbtn" data-auth-view="signup">Create an account</button>
+          <button type="button" class="linkbtn" data-auth-view="reset">Forgot password?</button>
           <button type="button" class="linkbtn auth-guest">Continue as guest</button>
+        </div>
+      </form>
+
+      <form id="authResetForm" class="auth-view" hidden>
+        <div class="auth-title">Reset password</div>
+        <div class="auth-steps"><span class="auth-step on" id="rsDot1"></span><span class="auth-step" id="rsDot2"></span></div>
+        <div id="rsStep1">
+          <p class="auth-note">Step 1 of 2 · we'll email you a 6-digit reset code.</p>
+          <input id="rsAcct" type="text" placeholder="Username or email" autocomplete="username" autocapitalize="none" spellcheck="false">
+          <div class="auth-err" id="rsErr1"></div>
+          <button type="button" id="rsSend">SEND CODE</button>
+        </div>
+        <div id="rsStep2" hidden>
+          <p class="auth-note">Step 2 of 2 · enter the code from your email and a new password.</p>
+          <input id="rsCode" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" spellcheck="false">
+          <input id="rsPass" type="password" placeholder="New password (8+ characters)" autocomplete="new-password">
+          <div class="auth-err" id="rsErr2"></div>
+          <div class="auth-btn-row"><button type="button" id="rsBack" class="secondary">BACK</button><button type="submit" id="rsBtn">RESET PASSWORD</button></div>
+        </div>
+        <div class="auth-links">
+          <button type="button" class="linkbtn" data-auth-view="login">Back to sign in</button>
         </div>
       </form>
 
@@ -2431,8 +2453,9 @@ async function authFetch(path,opts){const r=await fetch(AUTH_BASE+path,opts||{})
 function loadAccountKeys(k){k=k||{};if(k.groq)store.set('sttKey_groq',k.groq);if(k.gemini)store.set('geminiKey',k.gemini);if(k.deepgram)store.set('sttKey_deepgram',k.deepgram);else store.del('sttKey_deepgram');if(k.openai)store.set('sttKey_openai',k.openai);else store.del('sttKey_openai')}
 function clearAccountKeys(){store.del('sttKey_groq');store.del('geminiKey');store.del('sttKey_deepgram');store.del('sttKey_openai')}
 function authErr(id,msg,info){const e=$(id);if(!e)return;e.textContent=msg||'';e.classList.toggle('show',!!msg);e.classList.toggle('info',!!info)}
-function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup';if(v==='signup')suStep(1)}
+function setAuthView(v){$('authLoginForm').hidden=v!=='login';$('authSignupForm').hidden=v!=='signup';$('authResetForm').hidden=v!=='reset';if(v==='signup')suStep(1);if(v==='reset')rsStep(1)}
 function suStep(n){if(!$('suStep1'))return;$('suStep1').hidden=n!==1;$('suStep2').hidden=n!==2;$('suDot2').classList.toggle('on',n===2)}
+function rsStep(n){if(!$('rsStep1'))return;$('rsStep1').hidden=n!==1;$('rsStep2').hidden=n!==2;$('rsDot2').classList.toggle('on',n===2)}
 function showGate(v){setAuthView(v||'login');$('authGate').hidden=false}
 function hideGate(){$('authGate').hidden=true}
 function refreshAccountUI(){const u=store.get('authUser');const line=$('acctLine');if(line)line.innerHTML=u?('Signed in as <b style="color:var(--text)">'+String(u).replace(/[<>&"]/g,'')+'</b> — using your own API keys.'):'Using the shared keys (guest). Sign in to use your own keys.';const si=$('acctSignIn'),lo=$('acctLogout'),ap=$('acctProfile'),ah=$('acctHint');if(si)si.style.display=u?'none':'';if(lo)lo.style.display=u?'':'none';if(ap)ap.style.display=u?'':'none';if(ah)ah.style.display=u?'':'none';
@@ -2472,7 +2495,22 @@ $('suNext').onclick=()=>{authErr('suErr1','');const u=$('suUser').value.trim(),e
   if(p.length<8)return authErr('suErr1','Password must be at least 8 characters.');
   suStep(2);try{$('suGroq').focus()}catch{}};
 $('suBack').onclick=()=>{authErr('suErr','');suStep(1)};
-document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{authErr('liErr','');authErr('suErr','');authErr('suErr1','');setAuthView(btn.dataset.authView)});
+$('rsSend').onclick=async()=>{authErr('rsErr1','');const acct=$('rsAcct').value.trim();
+  if(!acct)return authErr('rsErr1','Enter your username or email.');
+  const b=$('rsSend');b.disabled=true;authErr('rsErr1','Sending…',true);
+  try{await authFetch('/auth/forgot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:acct})});
+    authErr('rsErr1','');rsStep(2);authErr('rsErr2','If an account matches, a code is on its way. Check your email.',true);try{$('rsCode').focus()}catch{}}
+  catch(err){authErr('rsErr1',err.message)}b.disabled=false};
+$('rsBack').onclick=()=>{authErr('rsErr2','');rsStep(1)};
+$('authResetForm').addEventListener('submit',async e=>{e.preventDefault();authErr('rsErr2','');
+  const acct=$('rsAcct').value.trim(),code=$('rsCode').value.trim(),pass=$('rsPass').value;
+  if(!/^\d{6}$/.test(code))return authErr('rsErr2','Enter the 6-digit code from your email.');
+  if(pass.length<8)return authErr('rsErr2','New password must be at least 8 characters.');
+  const b=$('rsBtn');b.disabled=true;
+  try{await authFetch('/auth/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:acct,code,password:pass})});
+    setAuthView('login');$('liUser').value=acct;$('liPass').value='';authErr('liErr','Password reset. Sign in with your new password.',true)}
+  catch(err){authErr('rsErr2',err.message)}b.disabled=false});
+document.querySelectorAll('[data-auth-view]').forEach(btn=>btn.onclick=()=>{authErr('liErr','');authErr('suErr','');authErr('suErr1','');authErr('rsErr1','');authErr('rsErr2','');setAuthView(btn.dataset.authView)});
 document.querySelectorAll('.auth-guest').forEach(btn=>btn.onclick=enterGuest);
 if($('acctSignIn'))$('acctSignIn').onclick=()=>{try{$('settingsDlg').close()}catch{}showGate('login')};
 if($('acctLogout'))$('acctLogout').onclick=()=>{if(confirm('Log out and go back to the shared keys?'))doLogout()};

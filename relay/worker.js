@@ -101,6 +101,25 @@ async function sessionUser(env, request) {
   return uname || null;
 }
 
+// Send a password-reset code by email via Resend. Needs RESEND_API_KEY and,
+// to reach arbitrary recipients, RESET_FROM on a domain verified in Resend.
+async function sendResetEmail(env, to, username, code) {
+  const from = String(env.RESET_FROM || 'Dispatch Watch <onboarding@resend.dev>').trim();
+  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;background:#0a1824;color:#eaf6fb;padding:26px;border-radius:14px;max-width:440px;margin:auto">
+    <div style="color:#8fe9ff;font-weight:800;letter-spacing:.12em;font-size:13px">SLO // DISPATCH WATCH</div>
+    <p style="color:#9db8c7;margin:10px 0 18px">Password reset for <b style="color:#eaf6fb">${username}</b></p>
+    <p style="margin:0 0 10px">Your reset code:</p>
+    <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#8fe9ff;background:#071522;padding:16px;border-radius:12px;text-align:center">${code}</div>
+    <p style="color:#9db8c7;font-size:13px;line-height:1.5;margin:18px 0 0">Enter it in the app to set a new password. It expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>
+  </div>`;
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + String(env.RESEND_API_KEY).trim(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to, subject: 'Your Dispatch Watch reset code: ' + code, html }),
+  });
+  if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text()).slice(0, 200));
+}
+
 async function handleAuth(request, env, url, origin) {
   const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   const ok = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: H });
@@ -120,10 +139,12 @@ async function handleAuth(request, env, url, origin) {
     if (!keys.gemini) return err(400, 'A Gemini API key is required');
     const ukey = 'user:' + username.toLowerCase();
     if (await env.USERS.get(ukey)) return err(409, 'That username is already taken');
+    if (await env.USERS.get('email:' + email.toLowerCase())) return err(409, 'An account already uses that email');
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const hash = await pbkdf2(password, salt);
     const keysEnc = await encrypt(env, keys);
     await env.USERS.put(ukey, JSON.stringify({ username, email, salt: b64(salt), hash, keysEnc, createdAt: Date.now() }));
+    await env.USERS.put('email:' + email.toLowerCase(), username.toLowerCase());
     const token = randToken();
     await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
     return ok({ token, username, keys, avatar: '' });
@@ -201,6 +222,7 @@ async function handleAuth(request, env, url, origin) {
     await env.USERS.put('user:' + lowNew, JSON.stringify(u));
     if (lowNew !== uname) {
       await env.USERS.delete('user:' + uname);
+      if (u.email) await env.USERS.put('email:' + String(u.email).toLowerCase(), lowNew);
       const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
       if (token) await env.USERS.put('sess:' + token, lowNew, { expirationTtl: 60 * 60 * 24 * 30 });
       const h = await env.USERS.get('host:' + uname);
@@ -222,6 +244,55 @@ async function handleAuth(request, env, url, origin) {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     u.salt = b64(salt); u.hash = await pbkdf2(next, salt);
     await env.USERS.put('user:' + uname, JSON.stringify(u));
+    return ok({ ok: true });
+  }
+
+  // Resolve an email or username to the stored (lowercase) username key.
+  async function resolveAccount(input) {
+    const s = String(input || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s.includes('@')) return (await env.USERS.get('email:' + s)) || null;
+    return (await env.USERS.get('user:' + s)) ? s : null;
+  }
+
+  if (url.pathname === '/auth/forgot' && request.method === 'POST') {
+    if (!env.RESEND_API_KEY) return err(503, 'Password-reset email is not set up on this relay yet.');
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    // Always respond the same way so the form can't probe which emails have accounts.
+    const generic = ok({ ok: true });
+    const uname = await resolveAccount(b.account);
+    if (!uname) return generic;
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return generic;
+    const u = JSON.parse(rec);
+    const existing = await env.USERS.get('reset:' + uname);
+    if (existing) { try { if (Date.now() - JSON.parse(existing).at < 60000) return generic; } catch {} } // 60s cooldown
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await env.USERS.put('reset:' + uname, JSON.stringify({ code, at: Date.now(), tries: 0 }), { expirationTtl: 900 });
+    try { await sendResetEmail(env, u.email, u.username, code); } catch {}
+    return generic;
+  }
+
+  if (url.pathname === '/auth/reset' && request.method === 'POST') {
+    let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+    const uname = await resolveAccount(b.account);
+    const code = String(b.code || '').trim();
+    const next = String(b.password || '');
+    const badCode = () => err(400, 'Wrong code, or it has expired. Request a new one.');
+    if (!uname) return badCode();
+    const recRaw = await env.USERS.get('reset:' + uname);
+    if (!recRaw) return badCode();
+    let rst; try { rst = JSON.parse(recRaw); } catch { return badCode(); }
+    if (rst.tries >= 5) { await env.USERS.delete('reset:' + uname); return err(429, 'Too many attempts. Request a new code.'); }
+    if (code !== rst.code) { rst.tries++; await env.USERS.put('reset:' + uname, JSON.stringify(rst), { expirationTtl: 900 }); return err(400, 'Wrong code. Check your email and try again.'); }
+    if (uname !== 'admin' && next.length < 8) return err(400, 'New password must be at least 8 characters');
+    const rec = await env.USERS.get('user:' + uname);
+    if (!rec) return badCode();
+    const u = JSON.parse(rec);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    u.salt = b64(salt); u.hash = await pbkdf2(next, salt);
+    await env.USERS.put('user:' + uname, JSON.stringify(u));
+    await env.USERS.delete('reset:' + uname);
     return ok({ ok: true });
   }
 
