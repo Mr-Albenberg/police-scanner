@@ -66,6 +66,58 @@ const te = new TextEncoder(), td = new TextDecoder();
 const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const randToken = (n = 32) => b64(crypto.getRandomValues(new Uint8Array(n))).replace(/[+/=]/g, '');
+const b64url = (buf) => b64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64url = (s) => unb64(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(s.length + ((4 - (s.length % 4)) % 4), '='));
+function concatU8(...arrs) { let n = 0; for (const a of arrs) n += a.length; const o = new Uint8Array(n); let i = 0; for (const a of arrs) { o.set(a, i); i += a.length; } return o; }
+async function sha256Id(s) { return b64url(await crypto.subtle.digest('SHA-256', te.encode(s))).slice(0, 24); }
+// Great-circle distance in metres between two lat/lon points.
+function distM(aLat, aLon, bLat, bLon) {
+  const R = 6371000, t = Math.PI / 180, dLa = (bLat - aLat) * t, dLo = (bLon - aLon) * t;
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(aLat * t) * Math.cos(bLat * t) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// --- Web Push (VAPID + RFC 8291 aes128gcm) ---------------------------------
+// Free browser push notifications. VAPID keypair: public key below (also in the
+// client), private key in the VAPID_PRIVATE_JWK secret. No third-party service.
+const VAPID_PUBLIC = 'BH9ZOWE2XozHXPfoU2Tnm5yKuz4wRN4ymuK1fAMETfJ640rreOanElDoj78RL2TR_tfdIrSjcoADhzTO8wXtFNw';
+const VAPID_SUBJECT = 'mailto:admin@platescan.org';
+async function hkdf(salt, ikm, info, len) {
+  const k = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, k, len * 8));
+}
+async function vapidJwt(env, endpoint) {
+  const seg = (o) => b64url(te.encode(JSON.stringify(o)));
+  const data = seg({ typ: 'JWT', alg: 'ES256' }) + '.' + seg({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: VAPID_SUBJECT });
+  const key = await crypto.subtle.importKey('jwk', JSON.parse(env.VAPID_PRIVATE_JWK), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, te.encode(data));
+  return data + '.' + b64url(sig);
+}
+async function pushEncrypt(sub, plaintext) {
+  const uaPub = unb64url(sub.keys.p256dh), auth = unb64url(sub.keys.auth);
+  const as = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const asPub = new Uint8Array(await crypto.subtle.exportKey('raw', as.publicKey));
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, as.privateKey, 256));
+  const ikm = await hkdf(auth, shared, concatU8(te.encode('WebPush: info\0'), uaPub, asPub), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, te.encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, te.encode('Content-Encoding: nonce\0'), 12);
+  const aes = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const rec = concatU8(te.encode(plaintext), new Uint8Array([2])); // 0x02 = last record, no padding
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, aes, rec));
+  return concatU8(salt, new Uint8Array([0, 0, 0x10, 0x00]), new Uint8Array([asPub.length]), asPub, ct); // rs=4096
+}
+async function sendPush(env, sub, payload) {
+  const body = await pushEncrypt(sub, JSON.stringify(payload));
+  const jwt = await vapidJwt(env, sub.endpoint);
+  const r = await fetch(sub.endpoint, {
+    method: 'POST',
+    headers: { Authorization: 'vapid t=' + jwt + ', k=' + VAPID_PUBLIC, 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '600', Urgency: 'high' },
+    body,
+  });
+  return r.status; // 201 ok; 404/410 => subscription gone
+}
 
 async function pbkdf2(password, saltBytes) {
   const km = await crypto.subtle.importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveBits']);
@@ -305,6 +357,82 @@ async function handleAuth(request, env, url, origin) {
   return err(404, 'unknown auth route');
 }
 
+// --- Zone push alerts -------------------------------------------------------
+//  /push/subscribe   POST {subscription, zone:{lat,lon,r}}  save/update a device
+//  /push/unsubscribe POST {endpoint}                        remove a device
+//  /push/test        POST {}                                send a test to my devices
+//  /alert/call       POST {lat,lon,text,title}              a running device reports
+//        a located call; the relay pushes every subscriber whose zone contains it.
+//  KV:  psub:<user>:<id> -> {endpoint, keys, zone, at}
+//       aseen:<callKey>  -> 1   (300s, global de-dup across reporters)
+//       prate:<subName>  -> ts  (per-device throttle, 300s)
+async function handlePush(request, env, url, origin) {
+  const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  const ok = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: H });
+  const err = (s, e) => ok({ error: e }, s);
+  if (!env.USERS || !env.VAPID_PRIVATE_JWK) return err(503, 'Push alerts are not set up on this relay yet.');
+  const uname = await sessionUser(env, request);
+  if (!uname) return err(401, 'not signed in');
+  if (request.method !== 'POST') return err(405, 'method');
+  let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
+
+  if (url.pathname === '/push/subscribe') {
+    const sub = b.subscription || {};
+    if (!sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return err(400, 'bad subscription');
+    const z = b.zone || {};
+    const lat = +z.lat, lon = +z.lon, r = +z.r;
+    if (!isFinite(lat) || !isFinite(lon) || !isFinite(r)) return err(400, 'a zone is required — set your spot first');
+    const id = await sha256Id(sub.endpoint);
+    await env.USERS.put('psub:' + uname + ':' + id, JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, zone: { lat, lon, r }, at: Date.now() }));
+    return ok({ ok: true });
+  }
+
+  if (url.pathname === '/push/unsubscribe') {
+    if (!b.endpoint) return err(400, 'endpoint required');
+    await env.USERS.delete('psub:' + uname + ':' + (await sha256Id(b.endpoint)));
+    return ok({ ok: true });
+  }
+
+  if (url.pathname === '/push/test') {
+    const list = await env.USERS.list({ prefix: 'psub:' + uname + ':' });
+    let sent = 0;
+    for (const k of list.keys) {
+      const raw = await env.USERS.get(k.name); if (!raw) continue;
+      const sub = JSON.parse(raw);
+      try { const st = await sendPush(env, sub, { title: 'Police Scanner', body: 'Test alert — zone notifications are on.', tag: 'test' }); if (st === 201 || st === 200) sent++; else if (st === 404 || st === 410) await env.USERS.delete(k.name); } catch {}
+    }
+    return ok({ ok: true, sent });
+  }
+
+  if (url.pathname === '/alert/call') {
+    const lat = +b.lat, lon = +b.lon;
+    if (!isFinite(lat) || !isFinite(lon)) return err(400, 'lat/lon required');
+    const text = String(b.text || '').slice(0, 300);
+    const title = String(b.title || 'Call in your zone').slice(0, 80);
+    const callKey = await sha256Id(lat.toFixed(3) + ',' + lon.toFixed(3) + '|' + text.slice(0, 40));
+    if (await env.USERS.get('aseen:' + callKey)) return ok({ ok: true, dedup: true });
+    await env.USERS.put('aseen:' + callKey, '1', { expirationTtl: 300 });
+    const list = await env.USERS.list({ prefix: 'psub:' });
+    const now = Date.now();
+    let sent = 0;
+    await Promise.all(list.keys.map(async (k) => {
+      const raw = await env.USERS.get(k.name); if (!raw) return;
+      const sub = JSON.parse(raw);
+      if (!sub.zone || distM(lat, lon, sub.zone.lat, sub.zone.lon) > sub.zone.r) return;
+      const last = await env.USERS.get('prate:' + k.name);
+      if (last && now - (+last) < 30000) return; // at most one push / 30s / device
+      try {
+        const st = await sendPush(env, sub, { title, body: text || 'A call just dropped in your zone.', tag: callKey, url: origin });
+        if (st === 201 || st === 200) { sent++; await env.USERS.put('prate:' + k.name, String(now), { expirationTtl: 300 }); }
+        else if (st === 404 || st === 410) await env.USERS.delete(k.name);
+      } catch {}
+    }));
+    return ok({ ok: true, sent });
+  }
+
+  return err(404, 'unknown push route');
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -318,6 +446,15 @@ export default {
       try { return await handleAuth(request, env, url, origin); }
       catch (e) {
         return new Response(JSON.stringify({ error: 'auth error: ' + String((e && e.message) || e) }),
+          { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
+      }
+    }
+
+    // Zone push-alert endpoints (subscribe / unsubscribe / test / alert fan-out).
+    if (url.pathname.startsWith('/push/') || url.pathname === '/alert/call') {
+      try { return await handlePush(request, env, url, origin); }
+      catch (e) {
+        return new Response(JSON.stringify({ error: 'push error: ' + String((e && e.message) || e) }),
           { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
       }
     }

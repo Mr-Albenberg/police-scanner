@@ -505,6 +505,11 @@
           <label class="switch"><input type="checkbox" id="follow"><span>Follow my location<small>Zone moves with you</small></span></label>
           <button type="button" class="linkbtn" id="watchBtn">WATCHING <span id="watchN">0</span> STREETS ›</button>
         </div>
+        <div class="zrow needloc">
+          <label class="switch"><input type="checkbox" id="pushAlertToggle"><span>Notify me of calls<small>Free push alert when a call drops in your zone</small></span></label>
+          <button type="button" class="linkbtn" id="pushTestBtn">TEST</button>
+        </div>
+        <div class="needloc" id="pushAlertHintRow" style="margin:-2px 2px 2px"><small id="pushAlertHint" style="color:#9db8c7;font-size:11.5px;line-height:1.4;display:block"></small></div>
         <div class="zrow needloc" style="justify-content:flex-end;margin-top:4px"><button type="button" class="secondary" id="zoneDone" style="min-height:34px">DONE</button></div>
       </div>
     </div>
@@ -1703,7 +1708,7 @@ function refreshNearby(how){
   const w=$('where');w.classList.toggle('warn',!inCounty);
   w.textContent=!inCounty?'This spot is outside San Luis Obispo County, so calls on this feed won\'t be near it.':`${place||'Zone set'}${meAcc?` · ±${Math.round(meAcc)} m`:''}${how?` · ${how}`:''}`;
 }
-function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge()}
+function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge();if(typeof pushSyncDebounced==='function')pushSyncDebounced()}
 function geoError(err){
   const ios=/iPhone|iPad/.test(navigator.userAgent),w=$('where');w.classList.add('warn');zoneOpen(true);
   w.textContent=err&&err.code===1
@@ -2473,7 +2478,7 @@ if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$
 // this page load, so a sign-in is prompted again next time. Logged-in users
 // (a stored token) are remembered and skip the gate.
 function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}}
 async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
 async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
@@ -3102,6 +3107,53 @@ setTimeout(loadStreetData,100);
 const PEERJS_SRC='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js';
 const P2P={peer:null,mode:'off',conns:new Map(),hostConn:null,hb:null,sync:null,poll:null,sent:{lines:{},incs:{}},followIncs:new Map(),hostAvail:false};
 function authHdr(){return {'Content-Type':'application/json',Authorization:'Bearer '+store.get('authToken')}}
+
+// --- Zone push alerts (free Web Push, no phone/SMS needed) ------------------
+const VAPID_PUBLIC='BH9ZOWE2XozHXPfoU2Tnm5yKuz4wRN4ymuK1fAMETfJ640rreOanElDoj78RL2TR_tfdIrSjcoADhzTO8wXtFNw';
+let pushTimer=null; // reuses the existing top-level `swReg`
+function b64ToU8(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u}
+function setPushHint(t){const e=$('pushAlertHint');if(e)e.textContent=t||''}
+function paintPush(){const t=$('pushAlertToggle');if(t)t.checked=store.get('pushOn')==='1'}
+function zonePayload(){return me?{lat:me[0],lon:me[1],r:radiusM()}:null}
+async function initSW(){if(!('serviceWorker'in navigator))return null;if(swReg)return swReg;try{swReg=await navigator.serviceWorker.register('sw.js');return swReg}catch{return null}}
+function iosNeedsInstall(){const ios=/iPhone|iPad|iPod/.test(navigator.userAgent);const standalone=navigator.standalone||matchMedia('(display-mode: standalone)').matches;return ios&&!standalone}
+async function pushEnable(){
+  if(!store.get('authToken')){setPushHint('Sign in to turn on zone alerts.');return false}
+  if(!me){zoneOpen(true);setPushHint('Set your zone first, then switch alerts on.');return false}
+  if(iosNeedsInstall()){setPushHint('On iPhone: tap Share → Add to Home Screen, open it from there, then turn this on.');return false}
+  if(!('Notification'in window)||!('PushManager'in window)){setPushHint('This browser doesn’t support push alerts.');return false}
+  const reg=await initSW();if(!reg){setPushHint('Couldn’t start notifications here.');return false}
+  let perm=Notification.permission;if(perm==='default')perm=await Notification.requestPermission();
+  if(perm!=='granted'){setPushHint('Notifications are blocked — allow them in your browser settings to get alerts.');return false}
+  try{
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC)});
+    const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})});
+    if(!r.ok)throw 0;
+  }catch{setPushHint('Couldn’t save your alert zone — try again.');return false}
+  store.set('pushOn','1');paintPush();setPushHint('On — you’ll get a notification when a call drops in your zone, even with the app closed.');return true
+}
+async function pushDisable(){
+  try{const sub=swReg&&await swReg.pushManager.getSubscription();if(sub){await fetch(AUTH_BASE+'/push/unsubscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});await sub.unsubscribe()}}catch{}
+  store.del('pushOn');paintPush();setPushHint('Off.')
+}
+var pushSyncT;function pushSyncDebounced(){clearTimeout(pushSyncT);pushSyncT=setTimeout(()=>{pushSync()},900)}
+async function pushSync(){ // zone or radius changed — update the stored zone
+  if(store.get('pushOn')!=='1'||!me)return;const reg=await initSW();if(!reg)return;
+  try{const sub=await reg.pushManager.getSubscription();if(!sub)return;await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})}).catch(()=>{})}catch{}
+}
+// Any signed-in running device reports located active calls; the relay fans a
+// push out to every subscriber whose zone contains the call (deduped server-side).
+function reportAlert(inc){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:inc.label||'',title:inc.label?('Call near '+inc.label):'Call in your zone'})}).catch(()=>{})}
+function alertScan(){if(!store.get('authToken'))return;for(const inc of incidents){if(inc.status==='active'&&!inc.alerted&&isFinite(inc.lat)&&isFinite(inc.lon)){inc.alerted=true;reportAlert(inc)}}}
+function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,4000)}
+function initPushAlerts(){
+  paintPush();initSW();
+  const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){pushEnable().then(okv=>{if(!okv)t.checked=false})}else pushDisable()};
+  const tb=$('pushTestBtn');if(tb)tb.onclick=async()=>{if(store.get('pushOn')!=='1'){setPushHint('Turn alerts on first, then test.');return}setPushHint('Sending a test…');try{const r=await fetch(AUTH_BASE+'/push/test',{method:'POST',headers:authHdr(),body:'{}'});const j=await r.json();setPushHint(j.sent?'Test sent — check your notifications.':'No device got it. Re-toggle alerts and try again.')}catch{setPushHint('Test failed — try again.')}};
+  if(store.get('authToken'))startReporting();
+  if(iosNeedsInstall())setPushHint('Tip: on iPhone, add this to your Home Screen to enable alerts.');
+}
 function p2pStatus(m){const el=$('p2pBanner');if(el){el.textContent=m||'';el.style.display=m?'':'none'}}
 async function ensurePeer(){if(!window.Peer)await loadScript(PEERJS_SRC)}
 async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:authHdr()});const j=await r.json();if(j.iceServers&&j.iceServers.length)return{iceServers:j.iceServers}}catch{}return{iceServers:[{urls:'stun:stun.cloudflare.com:3478'}]}}
@@ -3181,6 +3233,7 @@ $('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};
 // Now that P2P is initialized, set up buttons/poll for the current auth state
 // (the earlier call from initAuth was skipped while P2P was still in its TDZ).
 try{p2pOnAuth(!!store.get('authUser'))}catch{}
+try{initPushAlerts()}catch{}
 </script>
 </body>
 </html>
