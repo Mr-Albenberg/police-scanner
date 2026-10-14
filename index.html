@@ -116,6 +116,7 @@
     #zoneHead .where{grid-column:1/-1;grid-row:2;min-width:0;margin:0;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #zoneHead #radiusLbl{grid-column:2;grid-row:1;color:var(--text);font-size:10.5px;font-weight:800;letter-spacing:.04em;padding:2px 7px;border:1px solid #2a5068;border-radius:5px}
     #zoneHead .zc{grid-column:3;grid-row:1;color:var(--cyan);font-size:10.5px;font-weight:850;letter-spacing:.08em;padding:2px 6px}
+    .zpin{display:none} /* shown only as the collapsed mobile pin button */
     #zone.empty-zone #radiusLbl,#zone.empty-zone .zc{display:none}
     #zoneBody{display:none;padding:2px 12px 12px;border-top:1px solid var(--line2)}
     #zone.expanded #zoneBody,#zone.empty-zone #zoneBody{display:block}
@@ -287,7 +288,17 @@
       #hostBtn,#connectBtn{flex:1 1 auto}
       .acct-btn{flex:0 0 auto;min-width:42px}
       .acct-menu{min-width:62vw}
-      #side{top:calc(var(--top) + 112px);left:var(--gap);right:var(--gap);width:auto}
+      #side{top:calc(var(--top) + 112px);left:var(--gap);right:auto;width:auto;z-index:1200}
+      #zone{transition:width .2s ease}
+      .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
+      .zpin svg{width:23px;height:23px}
+      /* collapsed = a round location-pin button that drops the panel down */
+      #zone:not(.expanded):not(.empty-zone){width:48px;padding:0;border-radius:50%;overflow:hidden}
+      #zone:not(.expanded):not(.empty-zone) #zoneHead{min-height:48px;height:48px;width:48px;padding:0;display:flex;align-items:center;justify-content:center}
+      #zone:not(.expanded):not(.empty-zone) #zoneHead>:not(.zpin){display:none}
+      body.zone-active #zone:not(.expanded):not(.empty-zone) .zpin{color:var(--red);animation:edge 1.6s ease-in-out infinite}
+      #zone.expanded,#zone.empty-zone{width:min(92vw,360px)}
+      #zone.expanded .zpin,#zone.empty-zone .zpin{display:none}
       #zoneHead{min-height:42px}
       #zoneBody{max-height:calc(100vh - var(--sheet) - var(--top) - 180px);overflow-y:auto}
       .hint{display:none}
@@ -490,7 +501,7 @@
 
   <div id="side">
     <div id="zone" class="glass empty-zone">
-      <button type="button" id="zoneHead" aria-expanded="false" aria-controls="zoneBody" title="Change your alert zone"><span class="zl">YOUR ZONE</span><span class="where" id="where">Not set. Choose a spot to get alerts.</span><span id="radiusLbl">½ mi</span><span class="zc" id="zoneMore">CHANGE</span></button>
+      <button type="button" id="zoneHead" aria-expanded="false" aria-controls="zoneBody" title="Change your alert zone"><span class="zpin" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10.5" r="2.3"/></svg></span><span class="zl">YOUR ZONE</span><span class="where" id="where">Not set. Choose a spot to get alerts.</span><span id="radiusLbl">½ mi</span><span class="zc" id="zoneMore">CHANGE</span></button>
       <div id="zoneBody">
         <form id="searchForm" role="search"><input id="searchInput" type="search" placeholder="Search an address or cross streets" autocomplete="off" enterkeyhint="search" aria-label="Search address or cross streets">
           <div class="locbtns"><button id="geoBtn" class="secondary" type="button" title="Use this device's GPS and keep the zone on you"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 3.5 3.5 10.6l7.2 2.7 2.7 7.2z"/></svg>MY LOCATION</button><button id="pickBtn" class="secondary" type="button" title="Move the map to choose a spot"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10.5" r="2.3"/></svg>PICK ON MAP</button></div></form>
@@ -1692,6 +1703,7 @@ function setLocation(lat,lon,how,acc=0,quiet=false){
   meMarker.setLatLng(me);meCircle.setLatLng(me);meCircle.setRadius(radiusM());accCircle.setLatLng(me);accCircle.setRadius(acc||1);
   if(!quiet){map.fitBounds(meCircle.getBounds(),{maxZoom:16,...fitPad()});zoneOpen(false)}
   recheckZone();refreshNearby(how);
+  try{if(typeof maybeAutoEnable==='function')maybeAutoEnable()}catch{} // auto-turn-on zone alerts
 }
 function refreshNearby(how){
   if(!me)return;
@@ -2477,7 +2489,7 @@ if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$
 // this page load, so a sign-in is prompted again next time. Logged-in users
 // (a stored token) are remembered and skip the gate.
 function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}try{maybeAutoEnable()}catch{}}
 async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
 async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
@@ -3112,29 +3124,42 @@ const VAPID_PUBLIC='BH9ZOWE2XozHXPfoU2Tnm5yKuz4wRN4ymuK1fAMETfJ640rreOanElDoj78R
 let pushTimer=null; // reuses the existing top-level `swReg`
 function b64ToU8(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);return u}
 function setPushHint(t){const e=$('pushAlertHint');if(e)e.textContent=t||''}
-function paintPush(){const t=$('pushAlertToggle');if(t)t.checked=store.get('pushOn')==='1'}
+function paintPush(){const t=$('pushAlertToggle');if(t)t.checked=store.get('pushOff')!=='1'} // alerts are on by default
 function zonePayload(){return me?{lat:me[0],lon:me[1],r:radiusM()}:null}
 async function initSW(){if(!('serviceWorker'in navigator))return null;if(swReg)return swReg;try{swReg=await navigator.serviceWorker.register('sw.js');return swReg}catch{return null}}
 function iosNeedsInstall(){const ios=/iPhone|iPad|iPod/.test(navigator.userAgent);const standalone=navigator.standalone||matchMedia('(display-mode: standalone)').matches;return ios&&!standalone}
-async function pushEnable(){
-  if(!store.get('authToken')){setPushHint('Sign in to turn on zone alerts.');return false}
-  if(!me){zoneOpen(true);setPushHint('Set your zone first, then switch alerts on.');return false}
-  if(iosNeedsInstall()){setPushHint('On iPhone: tap Share → Add to Home Screen, open it from there, then turn this on.');return false}
-  if(!('Notification'in window)||!('PushManager'in window)){setPushHint('This browser doesn’t support push alerts.');return false}
-  const reg=await initSW();if(!reg){setPushHint('Couldn’t start notifications here.');return false}
-  let perm=Notification.permission;if(perm==='default')perm=await Notification.requestPermission();
-  if(perm!=='granted'){setPushHint('Notifications are blocked — allow them in your browser settings to get alerts.');return false}
+async function pushEnable(opts){
+  opts=opts||{};const silent=!!opts.silent;
+  if(!store.get('authToken')){if(!silent)setPushHint('Sign in to turn on zone alerts.');return false}
+  if(!me){if(!silent){zoneOpen(true);setPushHint('Set your zone first, then switch alerts on.')}return false}
+  if(iosNeedsInstall()){if(!silent)setPushHint('On iPhone: tap Share → Add to Home Screen, open it from there — alerts turn on automatically.');return false}
+  if(!('Notification'in window)||!('PushManager'in window)){if(!silent)setPushHint('This browser doesn’t support push alerts.');return false}
+  const reg=await initSW();if(!reg){if(!silent)setPushHint('Couldn’t start notifications here.');return false}
+  let perm=Notification.permission;
+  if(perm==='default'){if(silent)return false;perm=await Notification.requestPermission()}
+  if(perm!=='granted'){if(!silent)setPushHint('Notifications are blocked — allow them in your browser settings to get alerts.');return false}
   try{
     let sub=await reg.pushManager.getSubscription();
     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC)});
     const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})});
     if(!r.ok)throw 0;
-  }catch{setPushHint('Couldn’t save your alert zone — try again.');return false}
-  store.set('pushOn','1');paintPush();setPushHint('On — you’ll get a notification when a call drops in your zone, even with the app closed.');return true
+  }catch{if(!silent)setPushHint('Couldn’t save your alert zone — try again.');return false}
+  store.set('pushOn','1');store.del('pushOff');paintPush();setPushHint('On — you’ll get a notification when a call drops in your zone, even with the app closed.');return true
 }
 async function pushDisable(){
   try{const sub=swReg&&await swReg.pushManager.getSubscription();if(sub){await fetch(AUTH_BASE+'/push/unsubscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});await sub.unsubscribe()}}catch{}
-  store.del('pushOn');paintPush();setPushHint('Off.')
+  store.del('pushOn');paintPush();setPushHint('Off — you won’t get call notifications on this device.')
+}
+// Alerts default ON: subscribe this device automatically. Silent when permission
+// is already granted; otherwise prompt once, but only during a real user gesture.
+let autoTried=false;
+function maybeAutoEnable(){
+  if(store.get('pushOff')==='1'||!store.get('authToken')||!me)return;
+  const perm=('Notification'in window)?Notification.permission:'denied';
+  if(perm==='granted'){pushEnable({silent:true});return}
+  if(perm==='denied'||autoTried)return;
+  const active=navigator.userActivation?navigator.userActivation.isActive:false;
+  if(active){autoTried=true;pushEnable()}
 }
 var pushSyncT;function pushSyncDebounced(){clearTimeout(pushSyncT);pushSyncT=setTimeout(()=>{pushSync()},900)}
 async function pushSync(){ // zone or radius changed — update the stored zone
@@ -3148,10 +3173,11 @@ function alertScan(){if(!store.get('authToken'))return;for(const inc of incident
 function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,4000)}
 function initPushAlerts(){
   paintPush();initSW();
-  const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){pushEnable().then(okv=>{if(!okv)t.checked=false})}else pushDisable()};
+  const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){store.del('pushOff');pushEnable().then(okv=>{if(!okv)t.checked=false})}else{store.set('pushOff','1');pushDisable()}};
   const tb=$('pushTestBtn');if(tb)tb.onclick=async()=>{if(store.get('pushOn')!=='1'){setPushHint('Turn alerts on first, then test.');return}setPushHint('Sending a test…');try{const r=await fetch(AUTH_BASE+'/push/test',{method:'POST',headers:authHdr(),body:'{}'});const j=await r.json();setPushHint(j.sent?'Test sent — check your notifications.':'No device got it. Re-toggle alerts and try again.')}catch{setPushHint('Test failed — try again.')}};
   if(store.get('authToken'))startReporting();
-  if(iosNeedsInstall())setPushHint('Tip: on iPhone, add this to your Home Screen to enable alerts.');
+  maybeAutoEnable(); // auto-subscribe this device if permission was already granted
+  if(iosNeedsInstall())setPushHint('Tip: on iPhone, add this to your Home Screen — alerts then turn on automatically.');
 }
 function p2pStatus(m){const el=$('p2pBanner');if(el){el.textContent=m||'';el.style.display=m?'':'none'}}
 async function ensurePeer(){if(!window.Peer)await loadScript(PEERJS_SRC)}
