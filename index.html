@@ -156,6 +156,15 @@
     .mapbar button{display:flex;align-items:center;gap:9px;min-height:44px;padding:0 15px 0 12px;border-radius:11px;background:var(--glass);border:1px solid #2f6580;color:#dff5fc;box-shadow:0 8px 22px #0008;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:10.5px;letter-spacing:.1em}
     .mapbar button .ic{width:19px;height:19px;color:var(--cyan)}
     .mapbar button:hover{filter:none;border-color:var(--cyan);background:#0b2232f0}
+    /* mobile notification prompt */
+    #notifPrompt{position:fixed;z-index:1600;top:calc(var(--top,8px) + 176px);left:10px;right:10px;display:none;align-items:center;gap:10px;padding:10px 12px;background:#0b2232f7;border:1px solid var(--cyan);border-radius:12px;box-shadow:0 12px 30px #000a;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+    #notifPrompt.show{display:flex}
+    #notifPrompt .np-ic{font-size:20px;line-height:1}
+    #notifPrompt .np-txt{flex:1;min-width:0}
+    #notifPrompt .np-txt b{display:block;font-size:12.5px;color:#eaf6fb}
+    #notifPrompt .np-txt small{display:block;color:#9db8c7;font-size:11px;line-height:1.35}
+    #notifPrompt #notifEnable{min-height:34px;padding:0 13px;font-size:11px;letter-spacing:.06em;white-space:nowrap}
+    #notifPrompt #notifDismiss{background:none;border:0;color:#9db8c7;font-size:16px;line-height:1;padding:4px 2px;min-height:auto;box-shadow:none}
     .locbtns button{display:flex;align-items:center;justify-content:center;gap:7px}
     .locbtns .ic{width:15px;height:15px;color:var(--cyan)}
     #geoBtn.on{border-color:var(--cyan);color:var(--cyan)}
@@ -288,15 +297,18 @@
       #hostBtn,#connectBtn{flex:1 1 auto}
       .acct-btn{flex:0 0 auto;min-width:42px}
       .acct-menu{min-width:62vw}
-      #side{top:calc(var(--top) + 112px);left:var(--gap);right:auto;width:auto;z-index:1200}
+      /* zone picker: a bubble on the right, under the top account bubble */
+      #side{top:calc(var(--top) + 184px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
+      body.np-open #side{top:calc(var(--top) + 270px)} /* drop below the notify prompt */
       #zone{transition:width .2s ease}
       .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
-      .zpin svg{width:23px;height:23px}
-      /* collapsed = a round location-pin button that drops the panel down */
-      #zone:not(.expanded):not(.empty-zone){width:48px;padding:0;border-radius:50%;overflow:hidden}
-      #zone:not(.expanded):not(.empty-zone) #zoneHead{min-height:48px;height:48px;width:48px;padding:0;display:flex;align-items:center;justify-content:center}
+      .zpin svg{width:21px;height:21px}
+      /* collapsed = a map-style bubble; tap to drop the full panel down */
+      #zone:not(.expanded):not(.empty-zone){width:44px;height:44px;padding:0;border-radius:11px;overflow:hidden;border:1px solid #2f6580;box-shadow:0 8px 22px #0008}
+      #zone:not(.expanded):not(.empty-zone) #zoneHead{min-height:44px;height:44px;width:44px;padding:0;display:flex;align-items:center;justify-content:center}
       #zone:not(.expanded):not(.empty-zone) #zoneHead>:not(.zpin){display:none}
-      body.zone-active #zone:not(.expanded):not(.empty-zone) .zpin{color:var(--red);animation:edge 1.6s ease-in-out infinite}
+      body.zone-active #zone:not(.expanded):not(.empty-zone){border-color:var(--red)}
+      body.zone-active #zone:not(.expanded):not(.empty-zone) .zpin{color:var(--red)}
       #zone.expanded,#zone.empty-zone{width:min(92vw,360px)}
       #zone.expanded .zpin,#zone.empty-zone .zpin{display:none}
       #zoneHead{min-height:42px}
@@ -535,6 +547,12 @@
 
   <div id="errbar" role="alert"></div>
   <div id="toast" role="status"><b>⚠ POLICE ACTIVITY NEAR YOU</b><span id="toastText"></span></div>
+  <div id="notifPrompt" role="dialog" aria-label="Enable notifications">
+    <span class="np-ic" aria-hidden="true">🔔</span>
+    <div class="np-txt"><b id="npTitle">Turn on call alerts</b><small id="npSub">Get notified when a call drops in your zone — even with the app closed.</small></div>
+    <button type="button" id="notifEnable">ENABLE</button>
+    <button type="button" id="notifDismiss" aria-label="Not now">✕</button>
+  </div>
 
   <dialog id="profileDlg" aria-label="Profile">
     <div class="modal-head">PROFILE<button type="button" data-close aria-label="Close">×</button></div>
@@ -2489,7 +2507,7 @@ if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$
 // this page load, so a sign-in is prompted again next time. Logged-in users
 // (a stored token) are remembered and skip the gate.
 function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}try{maybeAutoEnable()}catch{}}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}try{maybeAutoEnable()}catch{}try{setTimeout(showNotifPrompt,600)}catch{}}
 async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
 async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
@@ -3161,6 +3179,20 @@ function maybeAutoEnable(){
   const active=navigator.userActivation?navigator.userActivation.isActive:false;
   if(active){autoTried=true;pushEnable()}
 }
+// Explicit mobile prompt to turn on notifications.
+function isMobileView(){return matchMedia('(max-width:760px)').matches}
+function hideNotifPrompt(){const p=$('notifPrompt');if(p)p.classList.remove('show');document.body.classList.remove('np-open')}
+function showNotifPrompt(){
+  const p=$('notifPrompt');if(!p||!isMobileView())return;
+  if(!store.get('authToken')||store.get('pushOff')==='1'||store.get('notifDismiss')==='1')return;
+  if(!('Notification'in window)||!('PushManager'in window))return;
+  if(Notification.permission==='granted'){hideNotifPrompt();return}
+  const ios=iosNeedsInstall();
+  if(Notification.permission==='denied'&&!ios)return; // blocked — can't re-prompt
+  if(ios){$('npTitle').textContent='Add to Home Screen for alerts';$('npSub').textContent='On iPhone: tap Share → Add to Home Screen, then open it from there to get call alerts.';$('notifEnable').style.display='none'}
+  else{$('npTitle').textContent='Turn on call alerts';$('npSub').textContent='Get notified when a call drops in your zone — even with the app closed.';$('notifEnable').style.display=''}
+  p.classList.add('show');document.body.classList.add('np-open');
+}
 var pushSyncT;function pushSyncDebounced(){clearTimeout(pushSyncT);pushSyncT=setTimeout(()=>{pushSync()},900)}
 async function pushSync(){ // zone or radius changed — update the stored zone
   if(store.get('pushOn')!=='1'||!me)return;const reg=await initSW();if(!reg)return;
@@ -3175,8 +3207,11 @@ function initPushAlerts(){
   paintPush();initSW();
   const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){store.del('pushOff');pushEnable().then(okv=>{if(!okv)t.checked=false})}else{store.set('pushOff','1');pushDisable()}};
   const tb=$('pushTestBtn');if(tb)tb.onclick=async()=>{if(store.get('pushOn')!=='1'){setPushHint('Turn alerts on first, then test.');return}setPushHint('Sending a test…');try{const r=await fetch(AUTH_BASE+'/push/test',{method:'POST',headers:authHdr(),body:'{}'});const j=await r.json();setPushHint(j.sent?'Test sent — check your notifications.':'No device got it. Re-toggle alerts and try again.')}catch{setPushHint('Test failed — try again.')}};
+  const ne=$('notifEnable');if(ne)ne.onclick=async()=>{const okv=await pushEnable();if(okv||(('Notification'in window)&&Notification.permission==='denied'))hideNotifPrompt()};
+  const nd=$('notifDismiss');if(nd)nd.onclick=()=>{store.set('notifDismiss','1');hideNotifPrompt()};
   if(store.get('authToken'))startReporting();
   maybeAutoEnable(); // auto-subscribe this device if permission was already granted
+  setTimeout(showNotifPrompt,1200); // explicit mobile ask
   if(iosNeedsInstall())setPushHint('Tip: on iPhone, add this to your Home Screen — alerts then turn on automatically.');
 }
 function p2pStatus(m){const el=$('p2pBanner');if(el){el.textContent=m||'';el.style.display=m?'':'none'}}
