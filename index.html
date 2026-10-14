@@ -606,6 +606,13 @@
         <label class="switch" style="margin-top:10px"><input type="checkbox" id="optSpeak"><span>Say the location out loud</span></label>
         <button class="secondary" id="testAlarm" type="button" style="margin-top:12px">TEST ALERT SOUND</button>
       </div>
+      <div><div class="lbl">NOTIFICATIONS &amp; CALL SYNC</div>
+        <p class="mnote" style="margin:2px 0 9px">When to share calls between accounts and send zone notifications.</p>
+        <div class="seg" id="linkModeSeg">
+          <button type="button" data-link="always">Always</button><button type="button" data-link="host">Only with a host</button>
+        </div>
+        <p class="mnote" id="linkModeHint" style="margin:9px 0 0"></p>
+      </div>
       <div id="watchSec">
         <div class="lbl">WATCHED STREETS <span id="watchN2"></span></div>
         <div class="chips" id="chips"></div>
@@ -2509,7 +2516,7 @@ if($('pwSave'))$('pwSave').onclick=async()=>{const cur=$('pwCurrent').value,nw=$
 // this page load, so a sign-in is prompted again next time. Logged-in users
 // (a stored token) are remembered and skip the gate.
 function enterGuest(){store.del('authToken');store.del('authUser');hideGate();refreshAccountUI()}
-async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}try{maybeAutoEnable()}catch{}try{setTimeout(showNotifPrompt,600)}catch{}}
+async function doLogin(username,password){const j=await authFetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}try{startReporting()}catch{}try{feedStart()}catch{}try{maybeAutoEnable()}catch{}try{setTimeout(showNotifPrompt,600)}catch{}}
 async function doSignup(data){const j=await authFetch('/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});store.set('authToken',j.token);store.set('authUser',j.username);store.set('acctAvatar',j.avatar||'');loadAccountKeys(j.keys);hideGate();refreshAccountUI();try{paintEngine()}catch{}}
 async function doLogout(){const tok=store.get('authToken');try{if(tok)await fetch(AUTH_BASE+'/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+tok}})}catch{}store.del('authToken');store.del('authUser');clearAccountKeys();location.reload()}
 async function testKey(url,hdr){try{const r=await fetch(url,hdr?{headers:hdr}:undefined);return r.ok}catch{return false}}
@@ -2999,6 +3006,7 @@ function stopSound(){audio.pause();if(hls){hls.destroy();hls=null}audio.removeAt
 async function keepAwake(on){try{if(on&&navigator.wakeLock&&!wakeLock){wakeLock=await navigator.wakeLock.request('screen');wakeLock.addEventListener('release',()=>wakeLock=null)}else if(!on&&wakeLock){await wakeLock.release();wakeLock=null}}catch{}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&listening)keepAwake(true)});
 async function play(){
+  try{feedClearView()}catch{} // this device takes over from synced feed calls
   const btn=$('start');btn.disabled=true;state('CONNECTING');
   if(USE_MINT&&MINT_URL){try{await mintStream()}catch(e){btn.disabled=false;state('NO STREAM');showErr('Couldn\'t get the radio stream from the relay. '+(e.message||''));return}}
   const c=getCtx();c&&c.resume&&c.resume();
@@ -3206,13 +3214,18 @@ function bestComplaint(inc){let b='';for(const e of inc.entries||[])if(e.complai
 function hasCode3(inc){return (inc.entries||[]).some(e=>/\bcode\s*3\b/i.test(e.text||''))}
 function notifReady(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return !!(inc.label&&svcs.length&&bestComplaint(inc))} // address + type + what's happening
 function notifSig(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return (inc.entries?inc.entries.length:0)+'|'+(inc.label||'')+'|'+svcs.join(',')+'|'+bestComplaint(inc)+'|'+(hasCode3(inc)?'3':'')}
+function bestVehicle(inc){for(const e of (inc.entries||[]).slice().reverse())if(e.vehicle&&String(e.vehicle).length<44)return String(e.vehicle);return''}
+function incUnitList(inc){try{return inc.units?[...inc.units].filter(Boolean).slice(0,5):[]}catch{return[]}}
 function notifContent(inc){
   const title=(String(inc.label||'').split(',')[0].trim())||'Call in your zone';
   const svcs=(typeof incServices==='function'?incServices(inc):[]);
   const type=(svcs.length&&SERVICES[svcs[0]])?SERVICES[svcs[0]].label:'';
   let detail=bestComplaint(inc);
   if(!detail){const e=(inc.entries||[]).filter(x=>x.text).pop();detail=e?String(e.text).replace(/\s+/g,' ').slice(0,90):''}
-  const body=(type?type+': ':'')+(detail||'A call just dropped in your zone')+(hasCode3(inc)?', code 3':'');
+  const extras=[];
+  const veh=bestVehicle(inc);if(veh&&!(detail&&detail.toLowerCase().includes(veh.toLowerCase().slice(0,6))))extras.push(veh);
+  const units=incUnitList(inc);if(units.length)extras.push(units.join(', '));
+  const body=(type?type+': ':'')+(detail||'A call just dropped in your zone')+(hasCode3(inc)?', code 3':'')+(extras.length?' · '+extras.join(' · '):'');
   return {title,body};
 }
 // Any signed-in running device reports located active calls; the relay fans a
@@ -3235,7 +3248,7 @@ async function localNotify(inc,c){
 }
 // Hold a new call for up to a minute so the address, type and details fill in;
 // fire as soon as it has them and has gone quiet, or at the 60s cap regardless.
-const NOTIF_SETTLE=20000, NOTIF_MAX=60000;
+const NOTIF_SETTLE=10000, NOTIF_MAX=50000; // fire ~10s after info stops arriving; 50s hard cap
 function alertScan(){
   if(!store.get('authToken'))return;
   const now=Date.now();
@@ -3248,9 +3261,11 @@ function alertScan(){
     const capped=now-inc.notifFirst>=NOTIF_MAX;
     if((notifReady(inc)&&settled)||capped){
       inc.alerted=true;
-      const c=notifContent(inc);
-      reportAlert(inc,c);
-      if(inc.inZone)localNotify(inc,c);
+      if(linkMode()==='always'||P2P.mode!=='off'){ // 'host' mode: only alert in a P2P session
+        const c=notifContent(inc);
+        reportAlert(inc,c);
+        if(inc.inZone)localNotify(inc,c);
+      }
     }
   }
 }
@@ -3274,7 +3289,8 @@ function initPushAlerts(){
   };
   const ne=$('notifEnable');if(ne)ne.onclick=async()=>{const okv=await pushEnable();if(okv||(('Notification'in window)&&Notification.permission==='denied'))hideNotifPrompt()};
   const nd=$('notifDismiss');if(nd)nd.onclick=()=>{store.set('notifDismiss','1');hideNotifPrompt()};
-  if(store.get('authToken'))startReporting();
+  try{initLinkMode()}catch{}
+  if(store.get('authToken')){startReporting();try{feedStart()}catch{}}
   maybeAutoEnable(); // auto-subscribe this device if permission was already granted
   setTimeout(showNotifPrompt,1200); // explicit mobile ask
   if(iosNeedsInstall())setPushHint('Tip: on iPhone, add this to your Home Screen — alerts then turn on automatically.');
@@ -3352,6 +3368,46 @@ function applyInc(s){let r=P2P.followIncs.get(s.id);
   if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map)}catch{}}
   try{r.marker.setLatLng([s.lat,s.lon]);r.marker.setIcon(L.divIcon({className:'',iconSize:[s.size,s.size],iconAnchor:[s.size/2,s.size/2],popupAnchor:[0,-s.size/2],html:s.iconHtml}));if(s.popup)r.marker.bindPopup(s.popup,{maxWidth:Math.min(300,innerWidth-36),...popPad()})}catch{}
   try{r.lg.clearLayers();if(s.line&&s.lineColors)s.lineColors.forEach((c,i)=>r.lg.addLayer(L.polyline(s.line,{color:c,weight:6,opacity:.9,dashArray:i?'14 14':null})))}catch{}}
+// --- Cross-account call sync via the relay feed -----------------------------
+// linkMode 'always': a listening device publishes its calls to the shared feed
+// and idle devices pull + render them, so calls sync between accounts with no
+// P2P host. 'host': only the manual HOST/CONNECT session shares calls.
+const FEED={pub:null,poll:null,cursor:0,sentL:{},sentI:{},viewOn:false};
+function linkMode(){return store.get('linkMode')||'always'}
+function feedOn(){return linkMode()==='always'&&!!store.get('authToken')}
+function isListening(){try{return !!listening}catch{return false}}
+function feedStart(){if(FEED.pub)return;FEED.pub=setInterval(feedPub,1700);FEED.poll=setInterval(feedPoll,2800)}
+function feedReset(){FEED.cursor=0;FEED.sentL={};FEED.sentI={}}
+async function feedPub(){
+  if(!feedOn()||!isListening())return;
+  let items=[];
+  try{
+    for(const e of lines){if(!e.el)continue;const s=snapLine(e);const sig=s.cls+'|'+s.style+'|'+s.html;if(FEED.sentL[s.id]!==sig){FEED.sentL[s.id]=sig;items.push({k:'line',id:'L'+s.id,ts:s.ts||Date.now(),data:s})}}
+    for(const inc of incidents){const s=snapInc(inc);const sig=JSON.stringify(s);if(FEED.sentI[s.id]!==sig){FEED.sentI[s.id]=sig;items.push({k:'inc',id:'I'+s.id,ts:Date.now(),data:s})}}
+  }catch{return}
+  for(let i=0;i<items.length;i+=25){try{await fetch(AUTH_BASE+'/feed',{method:'POST',headers:authHdr(),body:JSON.stringify({items:items.slice(i,i+25)})})}catch{}}
+}
+function feedClearView(){
+  if(P2P.mode!=='off'||!FEED.viewOn)return; // never disturb a live P2P session's view
+  FEED.viewOn=false;
+  try{for(const r of P2P.followIncs.values()){map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}}catch{}
+  P2P.followIncs.clear();
+  try{document.querySelectorAll('#transcript [id^="fl_"]').forEach(el=>el.remove());
+    const box=$('transcript');if(box&&!box.children.length){box.innerHTML='<div class="empty" id="emptyMsg"><b>Tap START LISTENING.</b> Calls appear here as you hear them and are pinned on the map. Tap ▶ to hear a call again. Green pins are resolved.</div>'}
+    $('tCount').textContent='';}catch{}
+}
+async function feedPoll(){
+  if(!feedOn()||isListening()){feedClearView();return}
+  if(P2P.mode!=='off')return; // P2P owns the view
+  let j;try{const r=await fetch(AUTH_BASE+'/feed?since='+FEED.cursor,{headers:authHdr()});j=await r.json()}catch{return}
+  if(!j||!Array.isArray(j.items))return;
+  if(typeof j.now==='number')FEED.cursor=j.now;
+  if(!j.items.length)return;
+  if(!FEED.viewOn){FEED.viewOn=true;const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();if(box&&!box.querySelector('[id^="fl_"]')&&!box.querySelector('#followWait'))box.insertAdjacentHTML('afterbegin','<div class="empty" id="followWait"><b>Synced calls.</b> Live calls shared by other listeners — press START LISTENING to run your own.</div>')}
+  for(const it of j.items){try{if(it.k==='line')applyLine(it.data);else if(it.k==='inc')applyInc(it.data)}catch{}}
+}
+function paintLinkMode(){const m=linkMode();document.querySelectorAll('#linkModeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.link===m));const h=$('linkModeHint');if(h)h.textContent=m==='always'?'Calls sync to every device on any account and zone notifications are sent — no host needed.':'Calls and notifications only while you Host or Connect to a host.'}
+function initLinkMode(){paintLinkMode();document.querySelectorAll('#linkModeSeg button').forEach(b=>b.onclick=()=>{store.set('linkMode',b.dataset.link);feedReset();try{feedClearView()}catch{}paintLinkMode();try{feedStart()}catch{}})}
 function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);if(P2P.mode==='host')fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{});if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
 $('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
 $('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};

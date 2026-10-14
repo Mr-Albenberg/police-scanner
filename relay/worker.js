@@ -435,6 +435,44 @@ async function handlePush(request, env, url, origin) {
   return err(404, 'unknown push route');
 }
 
+// --- Shared call feed -------------------------------------------------------
+// A single global room everyone's account reads/writes so calls sync between
+// accounts without a P2P host. Listening devices POST their call lines/incidents
+// (snapshots); idle devices GET everything newer than their cursor and render it.
+//  POST /feed  {items:[{k:'line'|'inc', id, ts, data}]}  publish (merge by k:id)
+//  GET  /feed?since=<seq>                                pull newer than cursor
+//  KV: feed:room -> [{k,id,seq,ts,pub,data}]  (160 most recent, 30-min TTL)
+async function handleFeed(request, env, url, origin) {
+  const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  const ok = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: H });
+  if (!env.USERS) return ok({ error: 'not configured' }, 503);
+  const uname = await sessionUser(env, request);
+  if (!uname) return ok({ error: 'not signed in' }, 401);
+  const ROOM = 'feed:room';
+  if (request.method === 'GET') {
+    const since = +url.searchParams.get('since') || 0;
+    const raw = await env.USERS.get(ROOM);
+    const all = raw ? JSON.parse(raw) : [];
+    return ok({ items: all.filter((it) => (+it.seq || 0) > since), now: Date.now() });
+  }
+  if (request.method === 'POST') {
+    let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
+    const inc = Array.isArray(b.items) ? b.items : [];
+    if (!inc.length) return ok({ ok: true, now: Date.now() });
+    const seq = Date.now();
+    const raw = await env.USERS.get(ROOM);
+    const m = new Map((raw ? JSON.parse(raw) : []).map((it) => [it.k + ':' + it.id, it]));
+    for (const it of inc) {
+      if (!it || !it.k || it.id == null) continue;
+      m.set(String(it.k) + ':' + it.id, { k: String(it.k), id: it.id, seq, ts: +it.ts || seq, pub: uname, data: it.data });
+    }
+    const all = [...m.values()].sort((a, b2) => (a.seq || 0) - (b2.seq || 0)).slice(-160);
+    await env.USERS.put(ROOM, JSON.stringify(all), { expirationTtl: 1800 });
+    return ok({ ok: true, now: seq });
+  }
+  return ok({ error: 'method' }, 405);
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -457,6 +495,15 @@ export default {
       try { return await handlePush(request, env, url, origin); }
       catch (e) {
         return new Response(JSON.stringify({ error: 'push error: ' + String((e && e.message) || e) }),
+          { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
+      }
+    }
+
+    // Shared cross-account call feed (publish while listening / poll while idle).
+    if (url.pathname === '/feed') {
+      try { return await handleFeed(request, env, url, origin); }
+      catch (e) {
+        return new Response(JSON.stringify({ error: 'feed error: ' + String((e && e.message) || e) }),
           { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
       }
     }
