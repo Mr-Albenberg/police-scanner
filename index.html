@@ -3200,9 +3200,24 @@ async function pushSync(){ // zone or radius changed — update the stored zone
   if(store.get('pushOn')!=='1'||!me)return;const reg=await initSW();if(!reg)return;
   try{const sub=await reg.pushManager.getSubscription();if(!sub)return;await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})}).catch(()=>{})}catch{}
 }
+// --- Notification content -------------------------------------------------
+// Header = the address; body = "Type: what's happening, code 3".
+function bestComplaint(inc){let b='';for(const e of inc.entries||[])if(e.complaint&&String(e.complaint).length>b.length)b=String(e.complaint);return b}
+function hasCode3(inc){return (inc.entries||[]).some(e=>/\bcode\s*3\b/i.test(e.text||''))}
+function notifReady(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return !!(inc.label&&svcs.length&&bestComplaint(inc))} // address + type + what's happening
+function notifSig(inc){const svcs=(typeof incServices==='function'?incServices(inc):[]);return (inc.entries?inc.entries.length:0)+'|'+(inc.label||'')+'|'+svcs.join(',')+'|'+bestComplaint(inc)+'|'+(hasCode3(inc)?'3':'')}
+function notifContent(inc){
+  const title=(String(inc.label||'').split(',')[0].trim())||'Call in your zone';
+  const svcs=(typeof incServices==='function'?incServices(inc):[]);
+  const type=(svcs.length&&SERVICES[svcs[0]])?SERVICES[svcs[0]].label:'';
+  let detail=bestComplaint(inc);
+  if(!detail){const e=(inc.entries||[]).filter(x=>x.text).pop();detail=e?String(e.text).replace(/\s+/g,' ').slice(0,90):''}
+  const body=(type?type+': ':'')+(detail||'A call just dropped in your zone')+(hasCode3(inc)?', code 3':'');
+  return {title,body};
+}
 // Any signed-in running device reports located active calls; the relay fans a
 // push out to every subscriber whose zone contains the call (deduped server-side).
-function reportAlert(inc){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:inc.label||'',title:inc.label?('Call near '+inc.label):'Call in your zone'})}).catch(()=>{})}
+function reportAlert(inc,c){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:c.body,title:c.title})}).catch(()=>{})}
 // Same call-key the relay uses, so a local notification and the server push
 // share a tag and don't double-pop on a device that's running AND subscribed.
 async function callKeyOf(lat,lon,text){
@@ -3212,13 +3227,33 @@ async function callKeyOf(lat,lon,text){
 }
 // Instant notification on THIS device (host or an open computer) for an in-zone
 // call — doesn't wait on the push round-trip. Closed devices still get the push.
-async function localNotify(inc){
+async function localNotify(inc,c){
   if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
   const reg=swReg||await initSW();if(!reg)return;
-  try{const tag=await callKeyOf(inc.lat,inc.lon,inc.label||'');
-    reg.showNotification(inc.label?('Call near '+inc.label):'Call in your zone',{body:(inc.label?inc.label+' — ':'')+'a call just dropped in your zone.',tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href}})}catch{}
+  try{const tag=await callKeyOf(inc.lat,inc.lon,c.body);
+    reg.showNotification(c.title,{body:c.body,tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href}})}catch{}
 }
-function alertScan(){if(!store.get('authToken'))return;for(const inc of incidents){if(inc.status==='active'&&!inc.alerted&&isFinite(inc.lat)&&isFinite(inc.lon)){inc.alerted=true;reportAlert(inc);if(inc.inZone)localNotify(inc)}}}
+// Hold a new call for up to a minute so the address, type and details fill in;
+// fire as soon as it has them and has gone quiet, or at the 60s cap regardless.
+const NOTIF_SETTLE=20000, NOTIF_MAX=60000;
+function alertScan(){
+  if(!store.get('authToken'))return;
+  const now=Date.now();
+  for(const inc of incidents){
+    if(inc.alerted||inc.status!=='active'||!isFinite(inc.lat)||!isFinite(inc.lon))continue;
+    inc.notifFirst=inc.notifFirst||now;
+    const sig=notifSig(inc);
+    if(sig!==inc._notifSig){inc._notifSig=sig;inc.notifChange=now}
+    const settled=now-(inc.notifChange||now)>=NOTIF_SETTLE;
+    const capped=now-inc.notifFirst>=NOTIF_MAX;
+    if((notifReady(inc)&&settled)||capped){
+      inc.alerted=true;
+      const c=notifContent(inc);
+      reportAlert(inc,c);
+      if(inc.inZone)localNotify(inc,c);
+    }
+  }
+}
 function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,4000)}
 function initPushAlerts(){
   paintPush();initSW();
