@@ -3012,7 +3012,10 @@ async function play(){
   if(!$('optSound').checked)state('LIVE · MUTED',true);
 }
 function stop(){listening=false;SEG.running=false;stopTabCapture();pbStop();stopSound();keepAwake(false);state('STOPPED');$('start').textContent='START LISTENING';$('lvl').style.width='0';try{if(P2P.mode==='host')p2pStop()}catch{}}
-$('start').onclick=()=>listening?stop():play();
+// One control: start serving (become the account's single host), take over from
+// another device, or stop. A device never processes the stream without hosting.
+$('start').onclick=()=>{(listening||P2P.mode==='host')?stop():becomeHost()};
+function paintStartBtn(){const b=$('start');if(!b)return;b.textContent=(listening||P2P.mode==='host')?'STOP':(P2P.mode==='follow'?'TAKE OVER':'START LISTENING');b.classList.toggle('takeover',P2P.mode==='follow')}
 $('optSound').onchange=()=>{store.set('sound',$('optSound').checked);if(TAB.out)TAB.out.gain.value=TAB.local&&$('optSound').checked?1:0;if(!listening)return;if(TAB.stream){state($('optSound').checked||!TAB.local?'LIVE · VIA BROADCASTIFY TAB':'LIVE · MUTED',true);return}if($('optSound').checked){if(captured)startSound().catch(()=>{});else pbStart()}else{pbStop();if(!captured)stopSound();state('LIVE · MUTED',true)}};
 $('optDouble').onchange=()=>store.set('double',$('optDouble').checked);
 $('optLoud').checked=store.get('loud',true);$('optLoud').onchange=()=>store.set('loud',$('optLoud').checked);
@@ -3309,18 +3312,27 @@ async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:aut
 
 function p2pOnAuth(loggedIn){if(!loggedIn){p2pStop();clearInterval(P2P.poll);return}p2pPaintButtons();clearInterval(P2P.poll);p2pCheckHost();P2P.poll=setInterval(p2pCheckHost,12000)}
 function p2pLbl(btn,txt){const s=btn.querySelector('.p2p-lbl');if(s)s.textContent=txt;else btn.textContent=txt}
-function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(!hb||!cb)return;const u=!!store.get('authUser');
+function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display='none';if(cb)cb.style.display='none';try{paintStartBtn()}catch{}return;
+  if(!hb||!cb)return;const u=!!store.get('authUser');
   if(!u){hb.style.display='none';cb.style.display='none';return}
   if(P2P.mode==='host'){hb.style.display='';p2pLbl(hb,'STOP');hb.classList.add('on');cb.style.display='none'}
   else if(P2P.mode==='follow'){cb.style.display='';p2pLbl(cb,'STOP');cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;hb.style.display='none'}
   else{hb.style.display='';p2pLbl(hb,'HOST');hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;p2pLbl(cb,'CONNECT');cb.classList.toggle('host-live',P2P.hostAvail);cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
-async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;try{const r=await fetch(AUTH_BASE+'/host',{headers:authHdr()});P2P.hostAvail=!!(await r.json()).peerId}catch{P2P.hostAvail=false}p2pPaintButtons()}
+async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;
+  let h=null;try{h=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+  P2P.hostAvail=!!h;
+  if(h&&!listening&&P2P.mode==='off'){connectToHost();return} // auto-connect to the account's host
+  p2pPaintButtons()}
 
-async function becomeHost(){if(!store.get('authToken'))return;p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
+async function becomeHost(){if(!store.get('authToken'))return;
+  if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
+  p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
-  P2P.peer.on('open',async id=>{await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(()=>reg(id),30000);startHostSync();hostBanner();p2pPaintButtons()});
-  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);if(m.type==='hello')sendSnapshot(conn);else if(m.type==='clipReq')sendClip(conn,m.id)}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+  P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(async()=>{
+    try{const cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId;if(cur&&cur!==id){p2pStop();return}}catch{} // someone else took over → step down
+    reg(id);},15000);startHostSync();hostBanner();p2pPaintButtons()});
+  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);if(m.type==='hello')sendSnapshot(conn);else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
@@ -3350,10 +3362,10 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
     conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello'}))}catch{}p2pStatus('Following host · live');p2pPaintButtons()});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — now listening on this device.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4500);try{play()}catch{}});
+    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — tap START LISTENING to take over.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},5000)});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
   P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
-function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=true;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Waiting for calls to come in…</div>'}
+function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
 function exitFollow(){try{stopFollowAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
 function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
