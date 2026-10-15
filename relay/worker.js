@@ -436,78 +436,6 @@ async function handlePush(request, env, url, origin) {
   return err(404, 'unknown push route');
 }
 
-// --- Shared call feed -------------------------------------------------------
-// A single global room everyone's account reads/writes so calls sync between
-// accounts without a P2P host. Listening devices POST their call lines/incidents
-// (snapshots); idle devices GET everything newer than their cursor and render it.
-//  POST /feed  {items:[{k:'line'|'inc', id, ts, data}]}  publish (merge by k:id)
-//  GET  /feed?since=<seq>                                pull newer than cursor
-//  KV: feed:room -> [{k,id,seq,ts,pub,data}]  (160 most recent, 30-min TTL)
-async function handleFeed(request, env, url, origin) {
-  const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
-  const ok = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: H });
-  if (!env.USERS) return ok({ error: 'not configured' }, 503);
-  const uname = await sessionUser(env, request);
-  if (!uname) return ok({ error: 'not signed in' }, 401);
-
-  // On-demand audio: idle devices REQUEST a clip (tiny write) only when they tap
-  // play; the listening device sees the request and uploads just that one clip.
-  // This avoids a KV write for every call's audio (the write-limit problem).
-  if (url.pathname === '/feed/clipreq' && request.method === 'POST') {
-    let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
-    const id = String(b.id || ''); if (!id) return ok({ error: 'id required' }, 400);
-    if (!(await env.USERS.get('fclip:' + id))) await env.USERS.put('creq:' + id, '1', { expirationTtl: 120 });
-    return ok({ ok: true });
-  }
-  if (url.pathname === '/feed/clipreqs' && request.method === 'GET') {
-    const list = await env.USERS.list({ prefix: 'creq:' });
-    return ok({ ids: list.keys.map((k) => k.name.slice(5)) });
-  }
-  // The clip itself: GET fetches it (idle device), POST stores it (listener, only
-  // in response to a request). Clearing the request marks it served.
-  if (url.pathname === '/feed/clip') {
-    if (request.method === 'GET') {
-      const id = url.searchParams.get('id') || '';
-      const u = id ? await env.USERS.get('fclip:' + id) : null;
-      return ok({ url: u || null });
-    }
-    if (request.method === 'POST') {
-      let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
-      const id = String(b.id || ''); const u = String(b.url || '');
-      if (!id || !u) return ok({ error: 'id and url required' }, 400);
-      await env.USERS.delete('creq:' + id);
-      if (u.length > 700000) return ok({ ok: true, skipped: 'too large' }); // ~500KB clip cap
-      await env.USERS.put('fclip:' + id, u, { expirationTtl: 900 });
-      return ok({ ok: true });
-    }
-    return ok({ error: 'method' }, 405);
-  }
-
-  const ROOM = 'feed:room';
-  if (request.method === 'GET') {
-    const since = +url.searchParams.get('since') || 0;
-    const raw = await env.USERS.get(ROOM);
-    const all = raw ? JSON.parse(raw) : [];
-    return ok({ items: all.filter((it) => (+it.seq || 0) > since), now: Date.now() });
-  }
-  if (request.method === 'POST') {
-    let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
-    const inc = Array.isArray(b.items) ? b.items : [];
-    if (!inc.length) return ok({ ok: true, now: Date.now() });
-    const seq = Date.now();
-    const raw = await env.USERS.get(ROOM);
-    const m = new Map((raw ? JSON.parse(raw) : []).map((it) => [it.k + ':' + it.id, it]));
-    for (const it of inc) {
-      if (!it || !it.k || it.id == null) continue;
-      m.set(String(it.k) + ':' + it.id, { k: String(it.k), id: it.id, seq, ts: +it.ts || seq, pub: uname, data: it.data });
-    }
-    const all = [...m.values()].sort((a, b2) => (a.seq || 0) - (b2.seq || 0)).slice(-160);
-    await env.USERS.put(ROOM, JSON.stringify(all), { expirationTtl: 1800 });
-    return ok({ ok: true, now: seq });
-  }
-  return ok({ error: 'method' }, 405);
-}
-
 export default {
   async fetch(request, env) {
     // Accept any origin so the app works from any URL, device or installed PWA
@@ -536,14 +464,7 @@ export default {
       }
     }
 
-    // Shared cross-account call feed (publish while listening / poll while idle).
-    if (url.pathname === '/feed' || url.pathname.startsWith('/feed/')) {
-      try { return await handleFeed(request, env, url, origin); }
-      catch (e) {
-        return new Response(JSON.stringify({ error: 'feed error: ' + String((e && e.message) || e) }),
-          { status: 500, headers: { ...cors(origin), 'Content-Type': 'application/json' } });
-      }
-    }
+    // (Call/event sync is peer-to-peer now; the KV feed was removed.)
 
     // --- Device coordination for same-account P2P (WebRTC via PeerJS) ---------
     //  /host  POST {peerId}  register this device as the account's host (60s TTL)
