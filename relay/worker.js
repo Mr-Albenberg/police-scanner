@@ -450,7 +450,21 @@ async function handleFeed(request, env, url, origin) {
   const uname = await sessionUser(env, request);
   if (!uname) return ok({ error: 'not signed in' }, 401);
 
-  // Audio clip for a synced call: publisher uploads, idle devices fetch on play.
+  // On-demand audio: idle devices REQUEST a clip (tiny write) only when they tap
+  // play; the listening device sees the request and uploads just that one clip.
+  // This avoids a KV write for every call's audio (the write-limit problem).
+  if (url.pathname === '/feed/clipreq' && request.method === 'POST') {
+    let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
+    const id = String(b.id || ''); if (!id) return ok({ error: 'id required' }, 400);
+    if (!(await env.USERS.get('fclip:' + id))) await env.USERS.put('creq:' + id, '1', { expirationTtl: 120 });
+    return ok({ ok: true });
+  }
+  if (url.pathname === '/feed/clipreqs' && request.method === 'GET') {
+    const list = await env.USERS.list({ prefix: 'creq:' });
+    return ok({ ids: list.keys.map((k) => k.name.slice(5)) });
+  }
+  // The clip itself: GET fetches it (idle device), POST stores it (listener, only
+  // in response to a request). Clearing the request marks it served.
   if (url.pathname === '/feed/clip') {
     if (request.method === 'GET') {
       const id = url.searchParams.get('id') || '';
@@ -461,6 +475,7 @@ async function handleFeed(request, env, url, origin) {
       let b; try { b = await request.json(); } catch { return ok({ error: 'bad request' }, 400); }
       const id = String(b.id || ''); const u = String(b.url || '');
       if (!id || !u) return ok({ error: 'id and url required' }, 400);
+      await env.USERS.delete('creq:' + id);
       if (u.length > 700000) return ok({ ok: true, skipped: 'too large' }); // ~500KB clip cap
       await env.USERS.put('fclip:' + id, u, { expirationTtl: 900 });
       return ok({ ok: true });
@@ -522,7 +537,7 @@ export default {
     }
 
     // Shared cross-account call feed (publish while listening / poll while idle).
-    if (url.pathname === '/feed' || url.pathname === '/feed/clip') {
+    if (url.pathname === '/feed' || url.pathname.startsWith('/feed/')) {
       try { return await handleFeed(request, env, url, origin); }
       catch (e) {
         return new Response(JSON.stringify({ error: 'feed error: ' + String((e && e.message) || e) }),

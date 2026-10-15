@@ -3391,31 +3391,44 @@ function applyInc(s){let r=P2P.followIncs.get(s.id);
 // linkMode 'always': a listening device publishes its calls to the shared feed
 // and idle devices pull + render them, so calls sync between accounts with no
 // P2P host. 'host': only the manual HOST/CONNECT session shares calls.
-const FEED={pub:null,poll:null,cursor:0,sentL:{},sentI:{},sentClips:{},viewOn:false};
+const FEED={pub:null,poll:null,cursor:0,sentL:{},sentI:{},sentClips:{},servedClips:{},viewOn:false};
 function linkMode(){return store.get('linkMode')||'always'}
 function feedOn(){return linkMode()==='always'&&!!store.get('authToken')}
 function isListening(){try{return !!listening}catch{return false}}
-function feedStart(){if(FEED.pub)return;FEED.pub=setInterval(feedPub,1700);FEED.poll=setInterval(feedPoll,2800)}
+function feedStart(){if(FEED.pub)return;FEED.pub=setInterval(feedPub,4000);FEED.poll=setInterval(feedPoll,3500)}
 function feedReset(){FEED.cursor=0;FEED.sentL={};FEED.sentI={}}
 async function feedPub(){
   if(!feedOn()||!isListening())return;
-  let items=[],newLines=[];
+  let items=[];
   try{
-    for(const e of lines){if(!e.el)continue;const s=snapLine(e);const sig=s.cls+'|'+s.style+'|'+s.html;if(FEED.sentL[s.id]!==sig){FEED.sentL[s.id]=sig;items.push({k:'line',id:'L'+s.id,ts:s.ts||Date.now(),data:s});newLines.push(e)}}
+    for(const e of lines){if(!e.el)continue;const s=snapLine(e);const sig=s.cls+'|'+s.style+'|'+s.html;if(FEED.sentL[s.id]!==sig){FEED.sentL[s.id]=sig;items.push({k:'line',id:'L'+s.id,ts:s.ts||Date.now(),data:s})}}
     for(const inc of incidents){const s=snapInc(inc);const sig=JSON.stringify(s);if(FEED.sentI[s.id]!==sig){FEED.sentI[s.id]=sig;items.push({k:'inc',id:'I'+s.id,ts:Date.now(),data:s})}}
-  }catch{return}
+  }catch{}
   for(let i=0;i<items.length;i+=25){try{await fetch(AUTH_BASE+'/feed',{method:'POST',headers:authHdr(),body:JSON.stringify({items:items.slice(i,i+25)})})}catch{}}
-  for(const e of newLines)feedUploadClip(e); // best-effort: share the audio so idle devices can replay
+  feedServeClips(); // upload audio only for calls someone asked to replay
+}
+// The listening device uploads a clip only when an idle device has requested it.
+async function feedServeClips(){
+  let ids;try{ids=(await (await fetch(AUTH_BASE+'/feed/clipreqs',{headers:authHdr()})).json()).ids}catch{return}
+  if(!ids||!ids.length)return;
+  for(const id of ids){if(FEED.servedClips[id])continue;const e=lines.find(x=>String(x.id)===String(id));if(e){FEED.servedClips[id]=1;feedUploadClip(e)}}
 }
 async function feedUploadClip(e){
-  if(!e||FEED.sentClips[e.id])return;FEED.sentClips[e.id]=1;
+  if(!e)return;
   let blob=null;try{blob=e.clipAudio?encodeWav(e.clipAudio):await ClipDB.get(e.id)}catch{}
   if(!blob||blob.size>480000)return; // ~480KB cap
   let url;try{url=await blobToDataUrl(blob)}catch{}if(!url)return;
   try{await fetch(AUTH_BASE+'/feed/clip',{method:'POST',headers:authHdr(),body:JSON.stringify({id:String(e.id),url})})}catch{}
 }
+// Idle device: ask for the clip, then poll until the listener uploads it.
 async function feedFetchClip(id){
-  try{const r=await fetch(AUTH_BASE+'/feed/clip?id='+encodeURIComponent(id),{headers:authHdr()});const j=await r.json();onClip(id,j&&j.url||null)}catch{onClip(id,null)}
+  try{
+    let j=await (await fetch(AUTH_BASE+'/feed/clip?id='+encodeURIComponent(id),{headers:authHdr()})).json();
+    if(j&&j.url){onClip(id,j.url);return}
+    await fetch(AUTH_BASE+'/feed/clipreq',{method:'POST',headers:authHdr(),body:JSON.stringify({id:String(id)})}).catch(()=>{});
+    for(let i=0;i<6;i++){await new Promise(r=>setTimeout(r,1500));j=await (await fetch(AUTH_BASE+'/feed/clip?id='+encodeURIComponent(id),{headers:authHdr()})).json();if(j&&j.url){onClip(id,j.url);return}}
+    onClip(id,null);
+  }catch{onClip(id,null)}
 }
 function feedClearView(){
   if(P2P.mode!=='off'||!FEED.viewOn)return; // never disturb a live P2P session's view
