@@ -488,7 +488,7 @@ export default {
           if (b.stop) { await env.USERS.delete('host:' + uname); return new Response(JSON.stringify({ ok: true }), { headers: H }); }
           const peerId = String(b.peerId || '');
           if (!peerId) return new Response(JSON.stringify({ error: 'peerId required' }), { status: 400, headers: H });
-          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 60 });
+          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 150 });
           return new Response(JSON.stringify({ ok: true }), { headers: H });
         }
         return new Response(JSON.stringify({ error: 'method' }), { status: 405, headers: H });

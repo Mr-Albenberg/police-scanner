@@ -3327,14 +3327,27 @@ async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P
   if(h&&!listening&&P2P.mode==='off'){connectToHost();return} // auto-connect to the account's host
   p2pPaintButtons()}
 
+// When the host stops, each follower waits a short random time then either
+// follows whoever grabbed the host slot first, or becomes the host itself — so
+// the account keeps exactly one running host, elected automatically.
+function autoTakeOver(){
+  const delay=600+Math.random()*2600;
+  setTimeout(async()=>{
+    if(P2P.mode!=='off'||listening||!store.get('authToken'))return;
+    let h=null;try{h=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+    if(h)connectToHost();else becomeHost();
+  },delay);
+}
 async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
-  P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);P2P.hb=setInterval(async()=>{
-    try{const cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId;if(cur&&cur!==id){p2pStop();return}}catch{} // someone else took over → step down
-    reg(id);},15000);startHostSync();hostBanner();p2pPaintButtons()});
+  P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
+    let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+    if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
+    if(!cur||(++tick)%4===0)reg(id); // keep-alive WRITE only ~every 60s (TTL 150s) — far fewer KV writes
+  },15000);startHostSync();hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner();setTimeout(()=>hostCall(conn.peer),400)});conn.on('data',d=>{try{const m=JSON.parse(d);if(m.type==='hello')sendSnapshot(conn);else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
@@ -3367,7 +3380,7 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
     conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello'}))}catch{}p2pStatus('Following host · live');p2pPaintButtons()});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — tap START LISTENING to take over.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},5000)});
+    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
   P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
