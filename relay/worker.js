@@ -423,7 +423,7 @@ async function handlePush(request, env, url, origin) {
       const sub = JSON.parse(raw);
       if (!sub.zone || distM(lat, lon, sub.zone.lat, sub.zone.lon) > sub.zone.r) return;
       const last = await env.USERS.get('prate:' + k.name);
-      if (last && now - (+last) < 30000) return; // at most one push / 30s / device
+      if (last && now - (+last) < 12000) return; // at most one push / 12s / device
       try {
         const st = await sendPush(env, sub, { title, body: text || 'A call just dropped in your zone.', tag: callKey, url: href, call: { lat, lon } });
         if (st === 201 || st === 200) { sent++; await env.USERS.put('prate:' + k.name, String(now), { expirationTtl: 300 }); }

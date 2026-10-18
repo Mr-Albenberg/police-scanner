@@ -483,6 +483,7 @@
       <button id="start" type="button">START LISTENING</button>
       <button id="hostBtn" class="secondary p2p-btn" type="button" title="Broadcast your transcript and map to your other devices on this account" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg><span class="p2p-lbl">HOST</span></button>
       <button id="connectBtn" class="secondary p2p-btn" type="button" title="Mirror a device that is hosting on your account" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg><span class="p2p-lbl">CONNECT</span></button>
+      <button id="liveBtn" class="secondary p2p-btn" type="button" title="Hear the host's live audio" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span class="p2p-lbl">LISTEN LIVE</span></button>
       <button id="alertsBtn" class="secondary" type="button" title="Alerts off. Tap to turn on.">ALERTS OFF</button>
       <div class="acct-wrap">
         <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest"></span></button>
@@ -605,6 +606,13 @@
         <label class="switch"><input type="checkbox" id="optLoud" checked><span>Loud alert beeps<small>Louder, repeated beeps, with the radio turned down while they play.</small></span></label>
         <label class="switch" style="margin-top:10px"><input type="checkbox" id="optSpeak"><span>Say the location out loud</span></label>
         <button class="secondary" id="testAlarm" type="button" style="margin-top:12px">TEST ALERT SOUND</button>
+      </div>
+      <div><div class="lbl">OTHER DEVICES ON YOUR ACCOUNT</div>
+        <p class="mnote" style="margin:2px 0 9px">Devices auto-connect to whoever's hosting. Pick what a connected device does.</p>
+        <div class="seg" id="connModeSeg">
+          <button type="button" data-cm="sync">Sync &amp; alerts</button><button type="button" data-cm="live">Live listen</button>
+        </div>
+        <p class="mnote" style="margin:9px 0 0"><b>Sync &amp; alerts</b> mirrors calls + map and sends push notifications (light on data/battery). <b>Live listen</b> also streams the host's live audio.</p>
       </div>
       <div id="watchSec">
         <div class="lbl">WATCHED STREETS <span id="watchN2"></span></div>
@@ -3210,14 +3218,11 @@ async function pushSync(){ // zone or radius changed — update the stored zone
 // Header = the address; body = "Type: what's happening, code 3".
 function bestComplaint(inc){let b='';for(const e of inc.entries||[])if(e.complaint&&String(e.complaint).length>b.length)b=String(e.complaint);return b}
 function hasCode3(inc){return (inc.entries||[]).some(e=>/\bcode\s*3\b/i.test(e.text||''))}
-// "Complete" = address + what it's about + who's involved. Send as soon as all
-// three are known; otherwise hold (up to the 60s cap) and send what we have.
+// Speed first: fire as soon as the call has an address and a type (medical/fire/
+// police) — usually within a few seconds. Whatever details exist go in the body;
+// a 6s cap sends it even if the type hasn't classified yet.
 function notifReady(inc){
-  if(!inc.label)return false;                        // address
-  const what=bestComplaint(inc);if(!what)return false; // what it's about
-  const blob=what+' '+(inc.entries||[]).map(e=>e.text||'').join(' ');
-  const who=!!bestVehicle(inc)||/\b\d{1,3}\s*(?:yo|y\/o|year|yr)\b|\b(male|female|man|woman|subject|suspect|victim|driver|pedestrian|juvenile|elderly|child|rp|reporting party|people|persons?)\b/i.test(blob);
-  return who;                                        // who's involved
+  return !!(inc.label && (typeof incServices==='function'?incServices(inc).length:0));
 }
 function bestVehicle(inc){for(const e of (inc.entries||[]).slice().reverse())if(e.vehicle&&String(e.vehicle).length<44)return String(e.vehicle);return''}
 function incUnitList(inc){try{return inc.units?[...inc.units].filter(Boolean).slice(0,5):[]}catch{return[]}}
@@ -3269,7 +3274,7 @@ function handleFocusParam(){const m=location.search.match(/[?&]call=(-?\d+(?:\.\
 if('serviceWorker'in navigator)try{navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.type==='focusCall')focusCallAt(e.data.call)})}catch{}
 // Hold a new call for up to a minute so the address, type and details fill in;
 // fire as soon as it has them and has gone quiet, or at the 60s cap regardless.
-const NOTIF_MAX=60000; // never wait longer than a minute
+const NOTIF_MAX=6000; // send within 6s even if the type hasn't classified
 function alertScan(){
   if(!store.get('authToken'))return;
   const now=Date.now();
@@ -3283,7 +3288,7 @@ function alertScan(){
     }
   }
 }
-function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,4000)}
+function startReporting(){if(pushTimer||!store.get('authToken'))return;pushTimer=setInterval(alertScan,2000)}
 function initPushAlerts(){
   paintPush();initSW();
   const t=$('pushAlertToggle');if(t)t.onchange=()=>{if(t.checked){store.del('pushOff');pushEnable().then(okv=>{if(!okv)t.checked=false})}else{store.set('pushOff','1');pushDisable()}};
@@ -3315,7 +3320,7 @@ async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:aut
 
 function p2pOnAuth(loggedIn){if(!loggedIn){p2pStop();clearInterval(P2P.poll);return}p2pPaintButtons();clearInterval(P2P.poll);p2pCheckHost();P2P.poll=setInterval(p2pCheckHost,12000)}
 function p2pLbl(btn,txt){const s=btn.querySelector('.p2p-lbl');if(s)s.textContent=txt;else btn.textContent=txt}
-function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display='none';if(cb)cb.style.display='none';try{paintStartBtn()}catch{}return;
+function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display='none';if(cb)cb.style.display='none';try{paintStartBtn()}catch{}try{paintConnMode()}catch{}return;
   if(!hb||!cb)return;const u=!!store.get('authUser');
   if(!u){hb.style.display='none';cb.style.display='none';return}
   if(P2P.mode==='host'){hb.style.display='';p2pLbl(hb,'STOP');hb.classList.add('on');cb.style.display='none'}
@@ -3349,7 +3354,11 @@ async function becomeHost(){if(!store.get('authToken'))return;
     if(!cur||(++tick)%4===0)reg(id); // keep-alive WRITE only ~every 60s (TTL 150s) — far fewer KV writes
   },15000);startHostSync();hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
-  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner();setTimeout(()=>hostCall(conn.peer),400)});conn.on('data',d=>{try{const m=JSON.parse(d);if(m.type==='hello')sendSnapshot(conn);else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+  P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
+      if(m.type==='hello'){sendSnapshot(conn);if(m.audio)setTimeout(()=>hostCall(conn.peer),300)} // only stream audio to live-listen followers
+      else if(m.type==='audioReq')hostCall(conn.peer);
+      else if(m.type==='audioStop'){try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{}}
+      else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
@@ -3378,7 +3387,7 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — tap CONNECT to retry.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4000)}},22000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello'}))}catch{}p2pStatus('Following host · live');p2pPaintButtons()});
+    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live'}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
     conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
@@ -3430,12 +3439,30 @@ function playHostAudio(stream){ // follower: play the host's live audio
     if(listening)state('FOLLOWING HOST',true);}catch{}
 }
 function stopHostAudio(){try{if(hostAudioEl){hostAudioEl.pause();hostAudioEl.srcObject=null}}catch{}}
+// Two connection modes: 'sync' (default — auto-connect for events/map + push
+// alerts, no audio) and 'live' (also stream the host's live audio).
+function connMode(){return store.get('connMode')||'sync'}
+function setConnMode(m){store.set('connMode',m);paintConnMode();
+  if(P2P.mode==='follow'&&P2P.hostConn&&P2P.hostConn.open){
+    try{P2P.hostConn.send(JSON.stringify({type:m==='live'?'audioReq':'audioStop'}))}catch{}
+  }
+  if(m!=='live')stopHostAudio();
+}
+function paintConnMode(){const m=connMode();
+  document.querySelectorAll('#connModeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cm===m));
+  const lb=$('liveBtn');if(lb){lb.classList.toggle('on',m==='live');const s=lb.querySelector('span');if(s)s.textContent=m==='live'?'LIVE ON':'LISTEN LIVE';lb.style.display=P2P.mode==='follow'?'':'none'}
+}
+function initConnMode(){paintConnMode();
+  document.querySelectorAll('#connModeSeg button').forEach(b=>b.onclick=()=>setConnMode(b.dataset.cm));
+  const lb=$('liveBtn');if(lb)lb.onclick=()=>setConnMode(connMode()==='live'?'sync':'live');
+}
 function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);if(P2P.mode==='host')fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{});if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
 $('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
 $('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};
 // Now that P2P is initialized, set up buttons/poll for the current auth state
 // (the earlier call from initAuth was skipped while P2P was still in its TDZ).
 try{p2pOnAuth(!!store.get('authUser'))}catch{}
+try{initConnMode()}catch{}
 try{initPushAlerts()}catch{}
 </script>
 </body>
