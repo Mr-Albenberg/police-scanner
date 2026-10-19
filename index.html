@@ -3350,16 +3350,26 @@ function autoTakeOver(){
   },delay);
 }
 async function becomeHost(){if(!store.get('authToken'))return;
-  if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
+  // Taking over from a host we were following: grab everything on screen now —
+  // calls AND the transcript — so TAKE OVER keeps them (and re-shares them to
+  // the others) instead of wiping. (Captured before we tear the mirror down.)
+  const wasFollowing=P2P.mode==='follow';
+  let takeIncs=P2P.handoff,takeLines=null;P2P.handoff=null;
+  if(wasFollowing){
+    if(P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
+    if(!takeIncs||!takeIncs.length)takeIncs=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);
+    takeLines=snapshotFollowTranscript();
+  }
   P2P.mode='host';P2P.connecting=false; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   let hostOpened=false;
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
   // Seed recent calls so a takeover/cold start isn't blank: prefer the state we
   // were just shown as a follower (zero extra fetch), else the saved backlog.
-  _recentHash='';{const handoff=P2P.handoff;P2P.handoff=null;
+  _recentHash='';{
     for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();
-    if(handoff&&handoff.length)seedHostIncs(handoff);else backfillRecent(true);}
+    if(wasFollowing){lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';} // drop the mirrored (fl_) transcript; we re-add it as real host lines
+    if(takeIncs&&takeIncs.length){seedHostIncs(takeIncs);seedHostLines(takeLines)}else backfillRecent(true);}
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{hostOpened=true;P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
@@ -3491,6 +3501,18 @@ function makeRecentInc(s){if(!isFinite(s.lat)||!isFinite(s.lon))return null;
 function seedHostIncs(list){const now=Date.now(),have=new Set(incidents.map(i=>i.id));let n=0;
   for(const s of list||[]){if(!s||s.gone||have.has(s.id)||now-(s.lastAt||0)>ACTIVE_SHOW)continue;if(makeRecentInc(s))n++}
   if(n){updateEdge();try{saveState()}catch{}}return n}
+// Read the mirrored (fl_) transcript a follower is showing, so a take-over can
+// carry it across; and rebuild it as real host lines that re-sync to others.
+function snapshotFollowTranscript(){const out=[];const box=$('transcript');
+  box.querySelectorAll('[id^="fl_"]').forEach(el=>out.push({id:el.id.slice(3),ts:+(el.dataset.ts||0),cls:el.className,style:el.getAttribute('style')||'',html:el.innerHTML}));
+  return out}
+function seedHostLines(list){if(!list||!list.length)return 0;const box=$('transcript'),have=new Set(lines.map(l=>l.id));let n=0;
+  const em=$('emptyMsg')||$('followWait');if(em)em.remove();
+  for(const s of list){if(have.has(s.id))continue;
+    const el=document.createElement('div');el.className=s.cls||'line';if(s.style)el.setAttribute('style',s.style);el.innerHTML=s.html;el.dataset.ts=s.ts;
+    let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<s.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el);
+    lines.push({id:s.id,time:new Date(s.ts||Date.now()),el,results:[],units:new Set(),backfilled:true});n++}
+  $('tCount').textContent='· '+lines.length;return n}
 // Pull the saved backlog: a host rebuilds managed incidents (so it re-shares
 // them); an idle device just mirrors them on the map for display.
 async function backfillRecent(asHost){if(!store.get('authToken'))return;
