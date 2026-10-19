@@ -1747,7 +1747,7 @@ function refreshNearby(how){
   const w=$('where');w.classList.toggle('warn',!inCounty);
   w.textContent=!inCounty?'This spot is outside San Luis Obispo County, so calls on this feed won\'t be near it.':`${place||'Zone set'}${meAcc?` · ±${Math.round(meAcc)} m`:''}${how?` · ${how}`:''}`;
 }
-function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge();if(typeof followRecheck==='function')followRecheck();if(typeof pushSyncDebounced==='function')pushSyncDebounced()}
+function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge();if(typeof followRecheck==='function')followRecheck();if(typeof p2pSendZone==='function')p2pSendZone();if(typeof pushSyncDebounced==='function')pushSyncDebounced()}
 function geoError(err){
   const ios=/iPhone|iPad/.test(navigator.userAgent),w=$('where');w.classList.add('warn');zoneOpen(true);
   w.textContent=err&&err.code===1
@@ -3286,7 +3286,7 @@ function alertScan(){
     const capped=now-inc.notifFirst>=NOTIF_MAX;
     if(notifReady(inc)||capped){ // full info, or a minute has passed
       inc.alerted=true;
-      try{const c=notifContent(inc);reportAlert(inc,c);if(inc.inZone)localNotify(inc,c)}catch{}
+      try{const c=notifContent(inc);reportAlert(inc,c);if(inc.inZone)localNotify(inc,c);notifyFollowers(inc,c)}catch{}
     }
   }
 }
@@ -3348,7 +3348,7 @@ function autoTakeOver(){
 async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
-  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{},units:{}};
+  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
@@ -3357,10 +3357,11 @@ async function becomeHost(){if(!store.get('authToken'))return;
   },15000);startHostSync();hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
-      if(m.type==='hello'){sendSnapshot(conn);if(m.audio)setTimeout(()=>hostCall(conn.peer),300)} // only stream audio to live-listen followers
+      if(m.type==='hello'){if(m.zone)P2P.zones.set(conn.peer,m.zone);sendSnapshot(conn);if(m.audio)setTimeout(()=>hostCall(conn.peer),300)} // remember this device's zone; stream audio only to live-listen followers
+      else if(m.type==='zone'){if(m.zone)P2P.zones.set(conn.peer,m.zone);else P2P.zones.delete(conn.peer)} // the follower moved/resized its bubble
       else if(m.type==='audioReq')hostCall(conn.peer);
       else if(m.type==='audioStop'){try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{}}
-      else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);hostBanner()})});
+      else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);P2P.zones&&P2P.zones.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);P2P.zones&&P2P.zones.delete(conn.peer);hostBanner()})});
   P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
@@ -3399,7 +3400,7 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — tap CONNECT to retry.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4000)}},22000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live'}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
+    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
     conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
@@ -3411,6 +3412,7 @@ function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
   else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
   else if(msg.type==='incs'){(msg.incs||[]).forEach(applyInc);followEdge()}
   else if(msg.type==='units')applyUnits(msg.units||[]);
+  else if(msg.type==='notify')followerNotify(msg);
   else if(msg.type==='clip')onClip(msg.id,msg.url)}
 // A mirrored incident, coloured by THIS device's own zone (not the host's).
 function incDistLL(lat,lon,line){if(!me)return Infinity;let d=dist(me,[lat,lon]);if(line)for(const seg of line)for(const p of seg){const x=dist(me,p);if(x<d)d=x}return d}
@@ -3468,6 +3470,26 @@ function playHostAudio(stream){ // follower: play the host's live audio
 function stopHostAudio(){try{if(hostAudioEl){hostAudioEl.pause();hostAudioEl.srcObject=null}}catch{}}
 // Two connection modes: 'sync' (default — auto-connect for events/map + push
 // alerts, no audio) and 'live' (also stream the host's live audio).
+// A follower tells its host about its location bubble, so the host can fire a
+// notification straight down the P2P channel for calls in that device's zone —
+// a direct path that doesn't depend on the device's own push subscription.
+function p2pSendZone(){try{if(P2P.mode==='follow'&&P2P.hostConn&&P2P.hostConn.open)P2P.hostConn.send(JSON.stringify({type:'zone',zone:zonePayload()}))}catch{}}
+// Does a call (point, or anywhere along its drawn street) fall in a zone bubble?
+function callInZone(z,lat,lon,line){if(!z||!isFinite(z.lat)||!isFinite(z.lon)||!isFinite(z.r))return false;let d=dist([z.lat,z.lon],[lat,lon]);if(line)for(const seg of line)for(const p of seg){const x=dist([z.lat,z.lon],p);if(x<d)d=x}return d<=z.r}
+// Host: push a notification to every connected device whose bubble holds this call.
+function notifyFollowers(inc,c){
+  if(P2P.mode!=='host'||!P2P.conns||!P2P.conns.size||!P2P.zones)return;
+  for(const[peerId,conn]of P2P.conns){const z=P2P.zones.get(peerId);
+    if(z&&callInZone(z,inc.lat,inc.lon,inc.line)){try{conn.send(JSON.stringify({type:'notify',title:c.title,body:c.body,lat:inc.lat,lon:inc.lon}))}catch{}}}
+}
+// Follower: show a notification the host sent for a call in this device's zone
+// (shares the call's tag with the server push, so it never double-pops).
+async function followerNotify(m){
+  if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
+  const reg=swReg||await initSW();if(!reg||!isFinite(m.lat)||!isFinite(m.lon))return;
+  try{const tag=await callKeyOf(m.lat,m.lon,m.body);
+    reg.showNotification(m.title||'Police Scanner',{body:m.body||'A call just dropped in your zone.',tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href.split('?')[0],call:{lat:m.lat,lon:m.lon}}})}catch{}
+}
 function connMode(){return store.get('connMode')||'sync'}
 function setConnMode(m){store.set('connMode',m);paintConnMode();
   if(P2P.mode==='follow'&&P2P.hostConn&&P2P.hostConn.open){
