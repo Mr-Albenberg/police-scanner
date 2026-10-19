@@ -465,7 +465,29 @@ export default {
       }
     }
 
-    // (Call/event sync is peer-to-peer now; the KV feed was removed.)
+    // (Live call/event sync is peer-to-peer; this is only a cold-start backlog.)
+    // --- Recent-calls backlog -------------------------------------------------
+    //  /recent  POST {incs}  host saves a rolling snapshot of the last ~hour of
+    //                        calls (ONE key per account, 1-hour TTL, overwritten
+    //                        in place — so a day of hosting is a few writes, not
+    //                        thousands). GET returns it so a device coming online
+    //                        with no live host still sees recent active calls.
+    if (url.pathname === '/recent') {
+      const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+      const uname = await sessionUser(env, request);
+      if (!uname) return new Response(JSON.stringify({ error: 'not signed in' }), { status: 401, headers: H });
+      if (request.method === 'GET') {
+        const raw = await env.USERS.get('recent:' + uname);
+        return new Response(raw || JSON.stringify({ incs: [], at: 0 }), { headers: H });
+      }
+      if (request.method === 'POST') {
+        let b; try { b = await request.json(); } catch { b = {}; }
+        const incs = Array.isArray(b.incs) ? b.incs.slice(0, 150) : [];
+        await env.USERS.put('recent:' + uname, JSON.stringify({ incs, at: Date.now() }), { expirationTtl: 3600 });
+        return new Response(JSON.stringify({ ok: true, saved: incs.length }), { headers: H });
+      }
+      return new Response(JSON.stringify({ error: 'method' }), { status: 405, headers: H });
+    }
 
     // --- Device coordination for same-account P2P (WebRTC via PeerJS) ---------
     //  /host  POST {peerId}  register this device as the account's host (11-min TTL)

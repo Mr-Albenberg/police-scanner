@@ -3332,6 +3332,8 @@ async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P
   let h=null;try{h=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
   P2P.hostAvail=!!h;
   if(h&&!listening&&P2P.mode==='off'){connectToHost();return} // auto-connect to the account's host
+  // No live host: show the saved recent calls so this device still has context.
+  if(!h&&!listening&&P2P.mode==='off'&&!incidents.length&&!P2P.followIncs.size)backfillRecent(false);
   p2pPaintButtons()}
 
 // When the host stops, each follower waits a short random time then either
@@ -3349,12 +3351,17 @@ async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
+  // Seed recent calls so a takeover/cold start isn't blank: prefer the state we
+  // were just shown as a follower (zero extra fetch), else the saved backlog.
+  _recentHash='';{const handoff=P2P.handoff;P2P.handoff=null;
+    for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();
+    if(handoff&&handoff.length)seedHostIncs(handoff);else backfillRecent(true);}
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
     if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
     if(!cur||(++tick)%20===0)reg(id); // keep-alive WRITE only ~every 5 min (TTL 660s) — minimal KV writes
-  },15000);startHostSync();hostBanner();p2pPaintButtons()});
+  },15000);startHostSync();clearInterval(P2P.recentTimer);P2P.recentTimer=setInterval(()=>saveRecent(),240000);setTimeout(()=>saveRecent(true),8000);hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
       if(m.type==='hello'){if(m.zone)P2P.zones.set(conn.peer,m.zone);sendSnapshot(conn);if(m.audio)setTimeout(()=>hostCall(conn.peer),300)} // remember this device's zone; stream audio only to live-listen followers
@@ -3372,7 +3379,7 @@ function snapInc(inc){let ll=null;try{ll=inc.marker.getLatLng()}catch{}
   // its OWN zone and builds the pin itself, so two devices with different zones
   // each colour calls by their own radius (not the host's).
   const cols=incCols(inc);
-  return{id:inc.id,lat:ll?ll.lat:inc.lat,lon:ll?ll.lng:inc.lon,label:inc.label||'',cols,precise:!!inc.precise,active:inc.status==='active',resolved:inc.status==='resolved',line:inc.line||null,lineColors:inc.line?cols:null,gone:!!inc.gone}}
+  return{id:inc.id,lat:ll?ll.lat:inc.lat,lon:ll?ll.lng:inc.lon,label:inc.label||'',cols,svcs:incServices(inc),precise:!!inc.precise,active:inc.status==='active',resolved:inc.status==='resolved',line:inc.line||null,lineColors:inc.line?cols:null,lastAt:inc.lastAt||+inc.time||0,time:+inc.time||0,gone:!!inc.gone}}
 // Each tracked unit's current rendered position + status, as a flat snapshot the
 // follower can replay (the full trip simulation references DOM entries, so only
 // the computed position/label/status travels — enough to show the dot moving).
@@ -3402,7 +3409,7 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
     conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
+    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
     conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
   P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
@@ -3428,6 +3435,36 @@ function applyUnits(list){for(const u of list){if(u.gone){const T=UNIT_TRACK.get
     UNITS.set(u.k,Object.assign(UNITS.get(u.k)||{key:u.k,calls:[]},{label:u.label}));
     UNIT_TRACK.set(u.k,{key:u.k,at:{lat:u.lat,lon:u.lon,label:u.label},_st:u.st,last:u.last||Date.now()});}
   try{drawUnits();paintUnits()}catch{}}
+// --- Recent-calls backlog ----------------------------------------------------
+// So a device coming online — or one that just took over hosting — isn't blank:
+// it sees the last hour of active calls even when no host is live right now.
+// The live host saves a single rolling snapshot to the relay (one key, 1-hour
+// TTL, overwritten in place) at most once every few minutes, and only when it
+// changed — a few KV writes a day, not thousands.
+function recentActiveIncs(){const now=Date.now();return incidents.filter(i=>!i.gone&&now-(i.lastAt||+i.time||0)<=ACTIVE_SHOW).slice(-150).map(snapInc)}
+let _recentHash='';
+function saveRecent(force){if(P2P.mode!=='host'||!store.get('authToken'))return;const incs=recentActiveIncs();const h=JSON.stringify(incs);if(!force&&h===_recentHash)return;_recentHash=h;fetch(AUTH_BASE+'/recent',{method:'POST',headers:authHdr(),body:JSON.stringify({incs})}).catch(()=>{})}
+// Rebuild a lightweight, managed incident on the host from a saved/mirrored
+// record, so it re-syncs to anyone who connects and ages out normally.
+function makeRecentInc(s){if(!isFinite(s.lat)||!isFinite(s.lon))return null;
+  const inc={id:s.id||('i'+Date.now().toString(36)+(incSeq++)),lat:s.lat,lon:s.lon,label:s.label||'',precise:!!s.precise,status:s.resolved?'resolved':'active',svcs:s.svcs||[],entries:[],units:new Set(),time:s.time||s.lastAt||Date.now(),lastAt:s.lastAt||Date.now(),resolvedAt:s.resolved?Date.now():0,line:s.line||null,alerted:true,backfilled:true};
+  inc.inZone=incDist(inc)<=radiusM();
+  inc.marker=L.marker([inc.lat,inc.lon],{icon:pinIcon(inc),keyboard:false}).addTo(incidentLayer).bindPopup(inc.label?('<div class="pop"><div class="pl">📍 '+esc(inc.label)+'</div></div>'):esc(inc.label||'Call'),{maxWidth:Math.min(300,innerWidth-36),...popPad()});
+  inc.marker.on('click',()=>focusIncident(inc,true));
+  if(inc.line)setIncLine(inc,inc.line);
+  incidents.push(inc);return inc;
+}
+function seedHostIncs(list){const now=Date.now(),have=new Set(incidents.map(i=>i.id));let n=0;
+  for(const s of list||[]){if(!s||s.gone||have.has(s.id)||now-(s.lastAt||0)>ACTIVE_SHOW)continue;if(makeRecentInc(s))n++}
+  if(n){updateEdge();try{saveState()}catch{}}return n}
+// Pull the saved backlog: a host rebuilds managed incidents (so it re-shares
+// them); an idle device just mirrors them on the map for display.
+async function backfillRecent(asHost){if(!store.get('authToken'))return;
+  let data=null;try{data=await (await fetch(AUTH_BASE+'/recent',{headers:authHdr()})).json()}catch{}
+  const incs=(data&&data.incs)||[];if(!incs.length)return;
+  if(asHost||P2P.mode==='host')seedHostIncs(incs);
+  else if(P2P.mode==='off'&&!listening){const now=Date.now();for(const s of incs){if(s.gone||now-(s.lastAt||0)>ACTIVE_SHOW)continue;applyInc(s)}followEdge()}
+}
 // Followers can press play on a mirrored line; the clip is fetched from the host on demand.
 const followClips=new Map(),followPending=new Set();let followAudio=null,followPlayingId=null;
 function markPlay(id,on){const el=document.getElementById('fl_'+id);if(el)el.classList.toggle('fl-playing',on)}
@@ -3505,7 +3542,7 @@ function initConnMode(){paintConnMode();
   document.querySelectorAll('#connModeSeg button').forEach(b=>b.onclick=()=>setConnMode(b.dataset.cm));
   const lb=$('liveBtn');if(lb)lb.onclick=()=>setConnMode(connMode()==='live'?'sync':'live');
 }
-function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);if(P2P.mode==='host')fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{});if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
+function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);clearInterval(P2P.recentTimer);if(P2P.mode==='host'){try{saveRecent(true)}catch{}fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{})}if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
 $('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
 $('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};
 // Now that P2P is initialized, set up buttons/poll for the current auth state
