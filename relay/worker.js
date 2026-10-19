@@ -172,11 +172,27 @@ async function sendResetEmail(env, to, username, code) {
   if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text()).slice(0, 200));
 }
 
+// Bounded counter in KV for abuse throttling: increments until `cap`, then
+// blocks read-only (no more writes) until the TTL expires.
+async function rateHit(env, key, cap, ttl) {
+  let n = 0;
+  try { const v = await env.USERS.get(key); n = v ? (parseInt(v, 10) || 0) : 0; } catch {}
+  if (n >= cap) return { blocked: true, n };
+  try { await env.USERS.put(key, String(n + 1), { expirationTtl: ttl }); } catch {}
+  return { blocked: false, n: n + 1 };
+}
+
 async function handleAuth(request, env, url, origin) {
   const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   const ok = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: H });
   const err = (status, error) => ok({ error }, status);
   if (!env.USERS || !env.ENC_KEY) return err(500, 'accounts are not configured on this relay');
+  // Throttle sign-in / sign-up attempts per client IP (brute force, enumeration,
+  // mass signups). Generous cap so normal use + a few retries never trip it.
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || '0';
+  if ((url.pathname === '/auth/login' || url.pathname === '/auth/signup') && request.method === 'POST') {
+    if ((await rateHit(env, 'iprate:' + ip, 50, 600)).blocked) return err(429, 'Too many attempts from your network. Wait a few minutes and try again.');
+  }
 
   if (url.pathname === '/auth/signup' && request.method === 'POST') {
     let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
@@ -206,13 +222,19 @@ async function handleAuth(request, env, url, origin) {
     let b; try { b = await request.json(); } catch { return err(400, 'bad request'); }
     const username = String(b.username || '').trim();
     const password = String(b.password || '');
-    const rec = await env.USERS.get('user:' + username.toLowerCase());
-    if (!rec) return err(401, 'Wrong username or password');
+    const low = username.toLowerCase();
+    // Per-account lockout: too many wrong passwords in a row → pause this account.
+    const lfRaw = await env.USERS.get('lfail:' + low);
+    const lfn = lfRaw ? (parseInt(lfRaw, 10) || 0) : 0;
+    if (lfn >= 8) return err(429, 'Too many failed sign-ins for this account. Wait ~15 minutes and try again.');
+    const rec = await env.USERS.get('user:' + low);
+    if (!rec) { await env.USERS.put('lfail:' + low, String(lfn + 1), { expirationTtl: 900 }); return err(401, 'Wrong username or password'); }
     const u = JSON.parse(rec);
     const hash = await pbkdf2(password, unb64(u.salt));
-    if (hash !== u.hash) return err(401, 'Wrong username or password');
+    if (hash !== u.hash) { await env.USERS.put('lfail:' + low, String(lfn + 1), { expirationTtl: 900 }); return err(401, 'Wrong username or password'); }
+    if (lfn > 0) { try { await env.USERS.delete('lfail:' + low); } catch {} } // reset the counter on success
     const token = randToken();
-    await env.USERS.put('sess:' + token, username.toLowerCase(), { expirationTtl: 60 * 60 * 24 * 30 });
+    await env.USERS.put('sess:' + token, low, { expirationTtl: 60 * 60 * 24 * 30 });
     return ok({ token, username: u.username, keys: await decrypt(env, u.keysEnc), avatar: u.avatar || '' });
   }
 
