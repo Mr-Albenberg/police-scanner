@@ -3362,7 +3362,7 @@ async function becomeHost(){if(!store.get('authToken'))return;
   P2P.peer.on('open',async id=>{hostOpened=true;P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
     if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
-    if(!cur||(++tick)%12===0)reg(id); // keep-alive WRITE only ~every 3 min (TTL 420s) — few KV writes, quick stale cleanup
+    if(!cur||(++tick)%4===0)reg(id); // keep-alive WRITE ~every 60s (TTL 150s) — reliable presence + quick stale cleanup
   },15000);startHostSync();clearInterval(P2P.recentTimer);P2P.recentTimer=setInterval(()=>saveRecent(),240000);setTimeout(()=>saveRecent(true),8000);hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
@@ -3409,26 +3409,18 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
   enterFollow();p2pStatus('Connecting to host…');
-  let opened=false,settled=false;
-  // The registered host may be a stale record for a device that's gone. Rather
-  // than loop forever on a dead peer, take over and host on THIS device — which
-  // also overwrites the stale record, so the account self-heals in one attempt.
-  const takeover=async()=>{if(settled)return;settled=true;clearTimeout(deadline);
-    if(opened||P2P.mode!=='follow'||listening)return;
-    try{if(P2P.peer)P2P.peer.destroy()}catch{}P2P.peer=null;P2P.mode='off';
-    // The host slot may have changed while we were failing — prefer a live host
-    // that isn't the dead peer we just tried; otherwise take over by hosting.
-    let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
-    if(cur&&cur!==peerId){connectToHost();return}
-    p2pStatus('Host unreachable — hosting on this device…');becomeHost()};
-  const deadline=setTimeout(takeover,9000);
+  // On any failure just drop back to idle; the 12s poll (via exitFollow →
+  // p2pCheckHost) retries, and a genuinely dead host record expires in ~2.5 min.
+  // (No auto-hosting on failure — that caused two devices to fight over the host
+  // slot instead of connecting.)
+  let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — retrying…');exitFollow()}},20000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{opened=true;settled=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
+    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
     conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
-    conn.on('error',()=>takeover())});
-  P2P.peer.on('error',()=>takeover())}
+    conn.on('error',()=>{clearTimeout(deadline);if(P2P.mode==='follow')exitFollow()})});
+  P2P.peer.on('error',()=>{clearTimeout(deadline);if(P2P.mode==='follow')exitFollow()})}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
 function exitFollow(){try{stopFollowAudio();stopHostAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}

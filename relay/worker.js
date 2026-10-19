@@ -490,7 +490,7 @@ export default {
     }
 
     // --- Device coordination for same-account P2P (WebRTC via PeerJS) ---------
-    //  /host  POST {peerId}  register this device as the account's host (7-min TTL)
+    //  /host  POST {peerId}  register this device as the account's host (150s TTL)
     //         POST {stop:1}  stop hosting
     //         GET            get the account's current host peer id (or null)
     //  /ice   GET            ICE servers (Cloudflare STUN always; TURN if the
@@ -511,7 +511,7 @@ export default {
           if (b.stop) { await env.USERS.delete('host:' + uname); return new Response(JSON.stringify({ ok: true }), { headers: H }); }
           const peerId = String(b.peerId || '');
           if (!peerId) return new Response(JSON.stringify({ error: 'peerId required' }), { status: 400, headers: H });
-          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 420 });
+          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 150 });
           return new Response(JSON.stringify({ ok: true }), { headers: H });
         }
         return new Response(JSON.stringify({ error: 'method' }), { status: 405, headers: H });
