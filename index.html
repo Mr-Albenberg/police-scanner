@@ -89,6 +89,22 @@
     #tTypes{display:flex;gap:4px;flex-wrap:wrap}
     #tTypes button{min-height:30px;padding:0 9px;font-size:10px;font-weight:850;letter-spacing:.04em;background:#102c3e;border:1px solid #2f5a73;color:#9db8c7;border-radius:8px}
     #tTypes button.on{background:#0f3b33;border-color:var(--green);color:var(--green)}
+    #notifPrefs{display:flex;flex-direction:column;gap:7px;padding:9px 2px 2px;border-top:1px solid var(--line2);margin-top:5px}
+    .np-label{font-size:10px;font-weight:850;letter-spacing:.1em;color:var(--muted)}
+    .np-chips{display:flex;gap:5px;flex-wrap:wrap}
+    .np-chips button{min-height:30px;padding:0 11px;font-size:11px;font-weight:800;background:#102c3e;border:1px solid #2f5a73;color:#9db8c7;border-radius:8px}
+    .np-chips button.on{background:#0f3b33;border-color:var(--green);color:var(--green)}
+    .np-sw{font-size:12.5px}
+    .np-quiet{display:none;align-items:center;gap:8px;padding-left:2px}
+    #notifPrefs.quiet .np-quiet{display:flex}
+    .np-quiet input[type=time]{width:auto;min-height:36px;flex:0 0 auto}
+    .np-quiet span{color:var(--muted);font-size:12px}
+    .zonetoggle{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--line2);padding-top:9px;margin-top:5px}
+    #multiZoneBody{display:none;flex-direction:column;gap:7px}
+    .zonetoggle.on #multiZoneBody{display:flex}
+    .exz{display:flex;align-items:center;gap:8px;background:#0c1d2b;border:1px solid var(--line2);border-radius:8px;padding:7px 9px;font-size:12px}
+    .exz .exz-r{color:var(--muted);font-size:11px;margin-left:auto}
+    .exz .exz-x{background:none;border:0;color:var(--red);min-height:28px;padding:0 4px;font-size:18px;line-height:1}
     .muted{color:var(--muted);font-weight:700;letter-spacing:.08em}
     #upcoming{color:var(--amber);letter-spacing:.06em}
     .grab{display:none}
@@ -554,6 +570,24 @@
           <button type="button" class="linkbtn" id="pushTestBtn">TEST</button>
         </div>
         <div class="needloc" id="pushAlertHintRow" style="margin:-2px 2px 2px"><small id="pushAlertHint" style="color:#9db8c7;font-size:11.5px;line-height:1.4;display:block"></small></div>
+        <div class="needloc" id="notifPrefs">
+          <div class="np-label">Alert me for</div>
+          <div class="np-chips" id="npTypes">
+            <button type="button" data-nt="medical" class="on">Medical</button>
+            <button type="button" data-nt="fire" class="on">Fire</button>
+            <button type="button" data-nt="police" class="on">Police</button>
+          </div>
+          <label class="switch np-sw"><input type="checkbox" id="npCode3"><span>Code 3 only<small>Only lights-and-siren emergency responses</small></span></label>
+          <label class="switch np-sw"><input type="checkbox" id="npQuietOn"><span>Quiet hours<small>Silence alerts between these times</small></span></label>
+          <div class="np-quiet" id="npQuietRow"><input type="time" id="npQuietStart" value="22:00"><span>to</span><input type="time" id="npQuietEnd" value="07:00"></div>
+        </div>
+        <div class="needloc zonetoggle" id="multiZoneWrap">
+          <label class="switch np-sw"><input type="checkbox" id="multiZoneOn"><span>Watch extra areas<small>Also alert me about more than one spot</small></span></label>
+          <div id="multiZoneBody">
+            <div id="extraZoneList"></div>
+            <button type="button" class="secondary" id="addZoneBtn" style="min-height:32px;font-size:10px">+ ADD THIS SPOT AS AN EXTRA AREA</button>
+          </div>
+        </div>
         <div class="zrow needloc" style="justify-content:flex-end;margin-top:4px"><button type="button" class="secondary" id="zoneDone" style="min-height:34px">DONE</button></div>
       </div>
     </div>
@@ -3255,7 +3289,7 @@ async function pushEnable(opts){
     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC)});
     const key=psubKey(sub);
     if(store.get('psubKey')!==key){ // only hit the server (a KV write) when the device or its zone actually changed
-      const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})});
+      const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload(),zones:activeExtraZones(),prefs:notifPrefs(),tz:new Date().getTimezoneOffset()})});
       if(!r.ok)throw 0;store.set('psubKey',key);
     }
   }catch{if(!silent)setPushHint('Couldn’t save your alert zone — try again.');return false}
@@ -3291,11 +3325,11 @@ function showNotifPrompt(){
   p.classList.add('show');document.body.classList.add('np-open');
 }
 var pushSyncT;function pushSyncDebounced(){clearTimeout(pushSyncT);pushSyncT=setTimeout(()=>{pushSync()},900)}
-function psubKey(sub){return (sub&&sub.endpoint||'')+'|'+JSON.stringify(zonePayload()||0)}
+function psubKey(sub){return (sub&&sub.endpoint||'')+'|'+JSON.stringify(zonePayload()||0)+'|'+JSON.stringify(notifPrefs())+'|'+JSON.stringify(activeExtraZones())}
 async function pushSync(){ // zone or radius changed — update the stored zone
   if(store.get('pushOn')!=='1'||!me)return;const reg=await initSW();if(!reg)return;
-  try{const sub=await reg.pushManager.getSubscription();if(!sub)return;const key=psubKey(sub);if(store.get('psubKey')===key)return; // zone unchanged → no redundant write
-    await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})}).catch(()=>{});store.set('psubKey',key)}catch{}
+  try{const sub=await reg.pushManager.getSubscription();if(!sub)return;const key=psubKey(sub);if(store.get('psubKey')===key)return; // zone/prefs unchanged → no redundant write
+    await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload(),zones:activeExtraZones(),prefs:notifPrefs(),tz:new Date().getTimezoneOffset()})}).catch(()=>{});store.set('psubKey',key)}catch{}
 }
 // --- Notification content -------------------------------------------------
 // Header = the address; body = "Type: what's happening, code 3".
@@ -3323,7 +3357,56 @@ function notifContent(inc){
 }
 // Any signed-in running device reports located active calls; the relay fans a
 // push out to every subscriber whose zone contains the call (deduped server-side).
-function reportAlert(inc,c){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:c.body,title:c.title,href:location.href.split('#')[0].split('?')[0]})}).catch(()=>{})}
+// --- Notification preferences (per device) -----------------------------------
+// Which call types to be alerted about, code-3-only, and quiet hours. Checked on
+// THIS device for local + follower notifications; also sent to the relay so push
+// to a closed device is filtered the same way.
+function incSvc(inc){try{const s=incServices(inc);return (s&&s[0])||''}catch{return''}}
+function notifPrefs(){const p=store.get('notifPrefs');return (p&&typeof p==='object')?p:{}}
+function notifAllowedBy(svc,code3){const p=notifPrefs();
+  if(p.types&&p.types.length&&svc&&p.types.indexOf(svc)<0)return false;
+  if(p.code3Only&&!code3)return false;
+  if(p.quiet&&isFinite(p.quiet.s)&&isFinite(p.quiet.e)){const d=new Date(),m=d.getHours()*60+d.getMinutes(),s=p.quiet.s,e=p.quiet.e;if(s<e?(m>=s&&m<e):(m>=s||m<e))return false}
+  return true}
+function notifAllowed(inc){return notifAllowedBy(incSvc(inc),hasCode3(inc))}
+function paintNotifPrefs(){const p=notifPrefs();const types=(p.types&&p.types.length)?p.types:['medical','fire','police'];
+  document.querySelectorAll('#npTypes button').forEach(b=>b.classList.toggle('on',types.indexOf(b.dataset.nt)>=0));
+  if($('npCode3'))$('npCode3').checked=!!p.code3Only;
+  if($('npQuietOn'))$('npQuietOn').checked=!!p.quiet;
+  if($('notifPrefs'))$('notifPrefs').classList.toggle('quiet',!!p.quiet);
+  if(p.quiet){const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');if($('npQuietStart'))$('npQuietStart').value=hm(p.quiet.s);if($('npQuietEnd'))$('npQuietEnd').value=hm(p.quiet.e)}}
+function saveNotifPrefs(){const on=[...document.querySelectorAll('#npTypes button.on')].map(b=>b.dataset.nt);const p={};
+  if(on.length&&on.length<3)p.types=on; // all three selected = notify for everything (no type filter)
+  if($('npCode3')&&$('npCode3').checked)p.code3Only=true;
+  if($('npQuietOn')&&$('npQuietOn').checked){const toM=v=>{const x=(v||'0:0').split(':');return (+x[0]||0)*60+(+x[1]||0)};p.quiet={s:toM($('npQuietStart').value),e:toM($('npQuietEnd').value)}}
+  store.set('notifPrefs',p);if($('notifPrefs'))$('notifPrefs').classList.toggle('quiet',!!p.quiet);
+  try{store.del('psubKey');if(typeof pushSync==='function')pushSync()}catch{}} // resend prefs to the relay
+function initNotifPrefs(){paintNotifPrefs();
+  const tt=$('npTypes');if(tt)tt.onclick=e=>{const b=e.target.closest('button[data-nt]');if(!b)return;
+    if(b.classList.contains('on')&&document.querySelectorAll('#npTypes button.on').length<=1)return; // keep at least one type on
+    b.classList.toggle('on');saveNotifPrefs()};
+  ['npCode3','npQuietOn','npQuietStart','npQuietEnd'].forEach(id=>{const el=$(id);if(el)el.onchange=saveNotifPrefs})}
+// --- Extra watch areas (#7) — optional, hidden behind a toggle ----------------
+function extraZones(){const z=store.get('extraZones');return Array.isArray(z)?z:[]}
+function multiOn(){return store.get('multiZoneOn')==='1'&&extraZones().length>0}
+function activeExtraZones(){return multiOn()?extraZones():[]}
+function incInExtra(inc){for(const z of activeExtraZones()){let d=dist([z.lat,z.lon],[inc.lat,inc.lon]);if(inc.line)for(const seg of inc.line)for(const p of seg){const x=dist([z.lat,z.lon],p);if(x<d)d=x}if(d<=z.r)return true}return false}
+const extraZoneLayer=L.layerGroup().addTo(map);
+function drawExtraZones(){extraZoneLayer.clearLayers();if(!multiOn())return;for(const z of extraZones())L.circle([z.lat,z.lon],{radius:z.r,color:'#9b8cff',weight:1.5,fillColor:'#9b8cff',fillOpacity:.05,interactive:false}).addTo(extraZoneLayer)}
+function renderExtraZones(){const list=$('extraZoneList');if(!list)return;const zs=extraZones();
+  list.innerHTML=zs.length?zs.map((z,i)=>`<div class="exz"><span>${esc(z.label||'Area '+(i+1))}</span><span class="exz-r">${(z.r/1609).toFixed(z.r/1609<1?1:0)} mi</span><button class="exz-x" data-ez="${i}" type="button" title="Remove">×</button></div>`).join(''):'<div class="exz-r" style="padding:3px 2px">No extra areas yet. Set your spot, then add it.</div>';
+  drawExtraZones()}
+function pushZonesSync(){try{store.del('psubKey');if(typeof pushSync==='function')pushSync()}catch{}}
+function initMultiZone(){const t=$('multiZoneOn');
+  if(t){t.checked=store.get('multiZoneOn')==='1';$('multiZoneWrap')&&$('multiZoneWrap').classList.toggle('on',t.checked);
+    t.onchange=()=>{store.set('multiZoneOn',t.checked?'1':'0');$('multiZoneWrap').classList.toggle('on',t.checked);drawExtraZones();pushZonesSync()}}
+  const add=$('addZoneBtn');if(add)add.onclick=()=>{if(!me)return;const zs=extraZones();if(zs.length>=5)return;
+    zs.push({lat:me[0],lon:me[1],r:radiusM(),label:(($('where')||{}).textContent||'').trim().slice(0,40)||'Extra area'});store.set('extraZones',zs);
+    if(store.get('multiZoneOn')!=='1'){store.set('multiZoneOn','1');if(t){t.checked=true}$('multiZoneWrap')&&$('multiZoneWrap').classList.add('on')}
+    renderExtraZones();pushZonesSync()};
+  const list=$('extraZoneList');if(list)list.onclick=e=>{const b=e.target.closest('[data-ez]');if(!b)return;const zs=extraZones();zs.splice(+b.dataset.ez,1);store.set('extraZones',zs);renderExtraZones();pushZonesSync()};
+  renderExtraZones()}
+function reportAlert(inc,c){fetch(AUTH_BASE+'/alert/call',{method:'POST',headers:authHdr(),body:JSON.stringify({lat:inc.lat,lon:inc.lon,text:c.body,title:c.title,svc:incSvc(inc),code3:hasCode3(inc),href:location.href.split('#')[0].split('?')[0]})}).catch(()=>{})}
 // Same call-key the relay uses, so a local notification and the server push
 // share a tag and don't double-pop on a device that's running AND subscribed.
 async function callKeyOf(lat,lon,text){
@@ -3335,6 +3418,7 @@ async function callKeyOf(lat,lon,text){
 // call — doesn't wait on the push round-trip. Closed devices still get the push.
 async function localNotify(inc,c){
   if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
+  if(!notifAllowed(inc))return; // respect this device's type / code-3 / quiet-hours filter
   const reg=swReg||await initSW();if(!reg)return;
   try{const tag=await callKeyOf(inc.lat,inc.lon,c.body);
     reg.showNotification(c.title,{body:c.body,tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href.split('?')[0],call:{lat:inc.lat,lon:inc.lon}}})}catch{}
@@ -3367,7 +3451,7 @@ function alertScan(){
     const capped=now-inc.notifFirst>=NOTIF_MAX;
     if(notifReady(inc)||capped){ // full info, or a minute has passed
       inc.alerted=true;
-      try{const c=notifContent(inc);reportAlert(inc,c);if(inc.inZone)localNotify(inc,c);notifyFollowers(inc,c)}catch{}
+      try{const c=notifContent(inc);reportAlert(inc,c);if(inc.inZone||incInExtra(inc))localNotify(inc,c);notifyFollowers(inc,c)}catch{}
     }
   }
 }
@@ -3665,12 +3749,14 @@ function callInZone(z,lat,lon,line){if(!z||!isFinite(z.lat)||!isFinite(z.lon)||!
 function notifyFollowers(inc,c){
   if(P2P.mode!=='host'||!P2P.conns||!P2P.conns.size||!P2P.zones)return;
   for(const[peerId,conn]of P2P.conns){const z=P2P.zones.get(peerId);
-    if(z&&callInZone(z,inc.lat,inc.lon,inc.line)){try{conn.send(JSON.stringify({type:'notify',title:c.title,body:c.body,lat:inc.lat,lon:inc.lon}))}catch{}}}
+    if(z&&callInZone(z,inc.lat,inc.lon,inc.line)){try{conn.send(JSON.stringify({type:'notify',title:c.title,body:c.body,lat:inc.lat,lon:inc.lon,svc:incSvc(inc),code3:hasCode3(inc)}))}catch{}}}
 }
 // Follower: show a notification the host sent for a call in this device's zone
-// (shares the call's tag with the server push, so it never double-pops).
+// (shares the call's tag with the server push, so it never double-pops). The
+// follower applies ITS OWN type/code-3/quiet filter here.
 async function followerNotify(m){
   if(store.get('pushOff')==='1'||!('Notification'in window)||Notification.permission!=='granted')return;
+  if(!notifAllowedBy(m.svc,m.code3))return;
   const reg=swReg||await initSW();if(!reg||!isFinite(m.lat)||!isFinite(m.lon))return;
   try{const tag=await callKeyOf(m.lat,m.lon,m.body);
     reg.showNotification(m.title||'Police Scanner',{body:m.body||'A call just dropped in your zone.',tag,renotify:true,icon:'logo.png',badge:'favicon-32.png',data:{url:location.href.split('?')[0],call:{lat:m.lat,lon:m.lon}}})}catch{}
@@ -3698,6 +3784,8 @@ $('connectBtn').onclick=()=>{if(P2P.mode==='follow'){P2P.noAuto=true;p2pStop()}e
 try{p2pOnAuth(!!store.get('authUser'))}catch{}
 try{initConnMode()}catch{}
 try{initTranscriptFilter()}catch{}
+try{initNotifPrefs()}catch{}
+try{initMultiZone()}catch{}
 try{initPushAlerts()}catch{}
 </script>
 </body>

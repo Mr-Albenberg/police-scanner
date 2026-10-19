@@ -390,6 +390,21 @@ async function handleAuth(request, env, url, origin) {
 //  KV:  psub:<user>:<id> -> {endpoint, keys, zone, at}
 //       aseen:<callKey>  -> 1   (300s, global de-dup across reporters)
 //       prate:<subName>  -> ts  (per-device throttle, 300s)
+// A subscriber's notification filter: call type, code-3-only, and quiet hours
+// (evaluated in the subscriber's local time via the stored tz offset).
+function passesPrefs(sub, svc, code3) {
+  const p = sub.prefs || {};
+  if (p.types && p.types.length && svc && p.types.indexOf(svc) < 0) return false;
+  if (p.code3Only && !code3) return false;
+  if (p.quiet && Number.isFinite(p.quiet.s) && Number.isFinite(p.quiet.e)) {
+    const utcMin = Math.floor(Date.now() / 60000) % 1440;
+    const local = (((utcMin - (sub.tz || 0)) % 1440) + 1440) % 1440;
+    const s = p.quiet.s, e = p.quiet.e;
+    if (s < e ? (local >= s && local < e) : (local >= s || local < e)) return false;
+  }
+  return true;
+}
+
 async function handlePush(request, env, url, origin) {
   const H = { ...cors(origin), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   const ok = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: H });
@@ -407,7 +422,11 @@ async function handlePush(request, env, url, origin) {
     const lat = +z.lat, lon = +z.lon, r = +z.r;
     if (!isFinite(lat) || !isFinite(lon) || !isFinite(r)) return err(400, 'a zone is required — set your spot first');
     const id = await sha256Id(sub.endpoint);
-    await env.USERS.put('psub:' + uname + ':' + id, JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, zone: { lat, lon, r }, at: Date.now() }));
+    const prefs = (b.prefs && typeof b.prefs === 'object') ? b.prefs : {};
+    const tz = Number.isFinite(+b.tz) ? +b.tz : 0;
+    // Optional extra watch areas (besides the main zone) — see /alert/call.
+    const zones = Array.isArray(b.zones) ? b.zones.map((z) => ({ lat: +z.lat, lon: +z.lon, r: +z.r })).filter((z) => isFinite(z.lat) && isFinite(z.lon) && isFinite(z.r)).slice(0, 5) : [];
+    await env.USERS.put('psub:' + uname + ':' + id, JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, zone: { lat, lon, r }, zones, prefs, tz, at: Date.now() }));
     return ok({ ok: true });
   }
 
@@ -433,6 +452,7 @@ async function handlePush(request, env, url, origin) {
     if (!isFinite(lat) || !isFinite(lon)) return err(400, 'lat/lon required');
     const text = String(b.text || '').slice(0, 300);
     const title = String(b.title || 'Call in your zone').slice(0, 80);
+    const svc = String(b.svc || '').slice(0, 16), code3 = !!b.code3; // for per-subscriber filtering
     const href = String(b.href || origin).slice(0, 300); // app URL to open on click
     const callKey = await sha256Id(lat.toFixed(3) + ',' + lon.toFixed(3) + '|' + text.slice(0, 40));
     // Cross-reporter de-dup is handled client-side now (one host reports each
@@ -444,7 +464,10 @@ async function handlePush(request, env, url, origin) {
     await Promise.all(list.keys.map(async (k) => {
       const raw = await env.USERS.get(k.name); if (!raw) return;
       const sub = JSON.parse(raw);
-      if (!sub.zone || distM(lat, lon, sub.zone.lat, sub.zone.lon) > sub.zone.r) return;
+      const inMain = sub.zone && distM(lat, lon, sub.zone.lat, sub.zone.lon) <= sub.zone.r;
+      const inExtra = Array.isArray(sub.zones) && sub.zones.some((z) => distM(lat, lon, z.lat, z.lon) <= z.r);
+      if (!inMain && !inExtra) return;            // not in this device's zone or any extra watch area
+      if (!passesPrefs(sub, svc, code3)) return;  // filtered out by type / code-3 / quiet hours
       const last = await env.USERS.get('prate:' + k.name);
       if (last && now - (+last) < 12000) return; // at most one push / 12s / device
       try {
