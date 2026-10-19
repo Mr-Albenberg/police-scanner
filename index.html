@@ -1698,7 +1698,9 @@ setInterval(()=>{ // expire pins; hide replay buttons older than 30 min
 },30000);
 $('mbMe').onclick=()=>{if(meCircle)map.fitBounds(meCircle.getBounds(),{maxZoom:16,...fitPad()});else{$('searchInput').focus();$('where').textContent='Search an address, tap MY LOCATION, or tap the map to set your zone.'}};
 $('mbLayer').onclick=()=>setMapStyle(mapStyle==='sat'?'dark':'sat');setMapStyle(mapStyle);
-$('mbAll').onclick=()=>{const pts=incidents.map(i=>[i.lat,i.lon]);if(me)pts.push(me);if(pts.length>1)map.fitBounds(pts,{maxZoom:15,...fitPad()});else if(pts.length)map.setView(pts[0],15);else map.setView([35.28,-120.66],10)};
+$('mbAll').onclick=()=>{const pts=incidents.map(i=>[i.lat,i.lon]);
+  try{if(P2P&&P2P.followIncs)for(const r of P2P.followIncs.values())if(r.s&&isFinite(r.s.lat)&&isFinite(r.s.lon))pts.push([r.s.lat,r.s.lon])}catch{} // connected devices keep calls in followIncs, not incidents
+  if(me)pts.push(me);if(pts.length>1)map.fitBounds(pts,{maxZoom:15,...fitPad()});else if(pts.length)map.setView(pts[0],15);else map.setView([35.28,-120.66],10)};
 function fitPad(){const w=innerWidth<=760;return w?{paddingTopLeft:[20,200],paddingBottomRight:[20,innerHeight*0.4]}:{paddingTopLeft:[440,140],paddingBottomRight:[150,40]}}
 
 // While picking a spot, a tap moves the crosshair there
@@ -3328,7 +3330,7 @@ function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.sty
   if(P2P.mode==='host'){hb.style.display='';p2pLbl(hb,'STOP');hb.classList.add('on');cb.style.display='none'}
   else if(P2P.mode==='follow'){cb.style.display='';p2pLbl(cb,'STOP');cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;hb.style.display='none'}
   else{hb.style.display='';p2pLbl(hb,'HOST');hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;p2pLbl(cb,'CONNECT');cb.classList.toggle('host-live',P2P.hostAvail);cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
-async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow')return;
+async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow'||P2P.connecting)return;
   let h=null;try{h=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
   P2P.hostAvail=!!h;
   if(h&&!listening&&P2P.mode==='off'){connectToHost();return} // auto-connect to the account's host
@@ -3349,7 +3351,7 @@ function autoTakeOver(){
 }
 async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
-  P2P.mode='host'; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
+  P2P.mode='host';P2P.connecting=false; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   let hostOpened=false;
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
@@ -3398,38 +3400,61 @@ function sendSnapshot(conn){try{
   conn.send(JSON.stringify({type:'snapshot-start'}));
   const is=incidents.map(snapInc);for(let i=0;i<is.length;i+=20)conn.send(JSON.stringify({type:'incs',incs:is.slice(i,i+20)}));
   const ls=lines.map(snapLine);for(let i=0;i<ls.length;i+=12)conn.send(JSON.stringify({type:'lines',lines:ls.slice(i,i+12)}));
-  const us=snapUnits();if(us.length)conn.send(JSON.stringify({type:'units',units:us}));
+  const us=snapUnits();conn.send(JSON.stringify({type:'units',units:us}));
+  conn.send(JSON.stringify({type:'snapshot-end',incs:is.map(x=>x.id),lines:ls.map(x=>x.id),units:us.map(x=>x.k)}));
 }catch{}}
 function blobToDataUrl(blob){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res(null);r.readAsDataURL(blob)})}
 async function sendClip(conn,id){let blob=null;const e=lines.find(x=>x.id===id);try{blob=e&&e.clipAudio?encodeWav(e.clipAudio):await ClipDB.get(id)}catch{}if(!blob){try{conn.send(JSON.stringify({type:'clip',id,url:null}))}catch{}return}const url=await blobToDataUrl(blob);try{conn.send(JSON.stringify({type:'clip',id,url}))}catch{}}
 
-async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Looking for a host…');let peerId=null;
-  try{peerId=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
-  if(!peerId){p2pStatus('No active host on your account right now.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},2500);return}
+// The WebRTC link can blip (a backgrounded/locked follower trips ICE-consent
+// timeouts ~every 20s). Reconnect quietly WITHOUT wiping the screen: keep the
+// mirrored calls/transcript, re-request a snapshot, and let it merge in place.
+// `keepView` = this is a reconnect, so don't clear what's already shown.
+async function connectToHost(keepView){if(!store.get('authToken'))return;
+  if(P2P.connecting||P2P.mode==='host')return; // one attempt at a time; never while hosting
+  P2P.connecting=true;
+  let peerId=null;try{peerId=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+  if(!peerId){P2P.connecting=false;
+    if(keepView){P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver();return} // host genuinely gone → elect a new one
+    p2pStatus('No active host on your account right now.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},2500);return}
   await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
-  enterFollow();p2pStatus('Connecting to host…');
-  // On any failure just drop back to idle; the 12s poll (via exitFollow →
-  // p2pCheckHost) retries, and a genuinely dead host record expires in ~2.5 min.
-  // (No auto-hosting on failure — that caused two devices to fight over the host
-  // slot instead of connecting.)
-  let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — retrying…');exitFollow()}},20000);
+  if(keepView){state('FOLLOWING HOST',true);try{paintStartBtn()}catch{}}else enterFollow();
+  p2pStatus(keepView?'Reconnecting…':'Connecting to host…');
+  let opened=false;
+  const fail=()=>{clearTimeout(deadline);if(opened||P2P.mode!=='follow')return;P2P.connecting=false;
+    P2P.failCount=(P2P.failCount||0)+1;
+    if(P2P.failCount>=4){P2P.failCount=0;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host unreachable — taking over…');autoTakeOver();return}
+    setTimeout(()=>{if(P2P.mode==='follow'&&!P2P.connecting)connectToHost(true)},1200)}; // retry, keeping the view
+  const deadline=setTimeout(fail,20000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
+    conn.on('open',()=>{opened=true;P2P.connecting=false;P2P.failCount=0;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
-    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
-    conn.on('error',()=>{clearTimeout(deadline);if(P2P.mode==='follow')exitFollow()})});
-  P2P.peer.on('error',()=>{clearTimeout(deadline);if(P2P.mode==='follow')exitFollow()})}
+    conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.connecting=false;P2P.hostConn=null;try{if(P2P.peer)P2P.peer.destroy()}catch{}P2P.peer=null;setTimeout(()=>{if(P2P.mode==='follow'&&!P2P.connecting)connectToHost(true)},700)}); // quiet reconnect, keep data on screen
+    conn.on('error',fail)});
+  P2P.peer.on('error',fail)}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
-function exitFollow(){try{stopFollowAudio();stopHostAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
+function exitFollow(){P2P.connecting=false;try{stopFollowAudio();stopHostAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
-function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
-  else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
-  else if(msg.type==='incs'){(msg.incs||[]).forEach(applyInc);followEdge()}
-  else if(msg.type==='units')applyUnits(msg.units||[]);
+// A snapshot (start → chunks → end) refreshes the mirror in place and only
+// removes what the host no longer has — so a reconnect never blanks the screen.
+function applyRemote(msg){if(msg.type==='snapshot-start'){P2P.snap={i:new Set(),l:new Set(),u:new Set()};const fw=$('followWait');if(fw)fw.remove()}
+  else if(msg.type==='snapshot-end'){pruneFollow(msg);P2P.snap=null}
+  else if(msg.type==='lines'){(msg.lines||[]).forEach(l=>{applyLine(l);if(P2P.snap)P2P.snap.l.add(l.id)})}
+  else if(msg.type==='incs'){(msg.incs||[]).forEach(s=>{applyInc(s);if(P2P.snap)P2P.snap.i.add(s.id)});followEdge()}
+  else if(msg.type==='units'){applyUnits(msg.units||[]);if(P2P.snap)(msg.units||[]).forEach(u=>P2P.snap.u.add(u.k))}
   else if(msg.type==='notify')followerNotify(msg);
   else if(msg.type==='clip')onClip(msg.id,msg.url)}
+// After a full snapshot, drop mirrored items the host didn't send (truly gone).
+function pruneFollow(end){
+  const keepI=new Set(end.incs||[]),keepL=new Set(end.lines||[]),keepU=new Set(end.units||[]);
+  for(const [id,r] of [...P2P.followIncs]){if(!keepI.has(id)){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}P2P.followIncs.delete(id)}}
+  const box=$('transcript');[...box.querySelectorAll('[id^="fl_"]')].forEach(el=>{if(!keepL.has(el.id.slice(3)))el.remove()});
+  $('tCount').textContent='· '+box.children.length;
+  for(const k of [...UNIT_TRACK.keys()])if(!keepU.has(k))UNIT_TRACK.delete(k);
+  try{drawUnits();paintUnits()}catch{}followEdge();
+}
 // A mirrored incident, coloured by THIS device's own zone (not the host's).
 function incDistLL(lat,lon,line){if(!me)return Infinity;let d=dist(me,[lat,lon]);if(line)for(const seg of line)for(const p of seg){const x=dist(me,p);if(x<d)d=x}return d}
 function followPin(s,inZone){const res=s.resolved,sz=s.line?16:s.precise?20:18;
