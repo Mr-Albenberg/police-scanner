@@ -2313,7 +2313,9 @@ async function playClip(entry){
 }
 // ---------------- remember calls and pins between sessions ----------------
 let saveT;
-function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{const now=Date.now();
+function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{
+  try{if(P2P.mode==='follow')return}catch{} // while following, incidents/lines are empty (we show a mirror) — don't overwrite this device's cached history with nothing
+  const now=Date.now();
   const incs=incidents.filter(i=>!i.gone).map(i=>({id:i.id,lat:i.lat,lon:i.lon,precise:i.precise,label:i.label,time:+i.time,lastAt:i.lastAt,status:i.status,resolvedAt:i.resolvedAt,units:[...i.units],line:i.line||null,svcs:incServices(i)}));
   const ls=lines.filter(l=>!l.partial&&now-l.time<ACTIVE_SHOW).slice(-150).map(l=>({id:l.id,time:+l.time,text:l.text,kinds:l.kinds,check:l.check,checkNote:l.checkNote,fixes:l.fixes,unc:[...(l.unc||[])],locWords:(l.locs||[]).flatMap(x=>x.words||[]),hits:(l.hits||[]).map(h=>({name:h.name,base:h.base})),inc:l.inc&&!l.inc.gone?l.inc.id:null,zone:!!l.zone,clip:!!l.clip,resolvedInc:l.resolvedInc&&!l.resolvedInc.gone?l.resolvedInc.id:null,morse:l.morse||null,toned:!!l.toned,inherited:!!l.inherited,inheritedAt:l.inheritedAt?+l.inheritedAt:0,plate:l.plate||null,vehicle:l.vehicle||null,complaint:l.complaint||null,addrCheck:l.addrCheck||null,cross:l.cross||[]}));
   store.set('dw_state',{v:1,saved:now,incs,lines:ls});
@@ -3368,8 +3370,14 @@ async function becomeHost(){if(!store.get('authToken'))return;
   // were just shown as a follower (zero extra fetch), else the saved backlog.
   _recentHash='';{
     for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();
-    if(wasFollowing){lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';} // drop the mirrored (fl_) transcript; we re-add it as real host lines
-    if(takeIncs&&takeIncs.length){seedHostIncs(takeIncs);seedHostLines(takeLines)}else backfillRecent(true);}
+    if(wasFollowing){ // the mirror was read-only; rebuild as real host state
+      lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;
+      if(takeIncs&&takeIncs.length){seedHostIncs(takeIncs);seedHostLines(takeLines)} // live mirror → re-add
+    }
+    // Nothing in memory (reload-wipe, dead-host takeover, cold start)? Bring back
+    // THIS device's cached transcript + calls so hosting never starts blank.
+    if(!lines.length&&!incidents.length){try{restoreState()}catch{}}
+    backfillRecent(true);} // fill any still-missing recent calls from the shared backlog (dedup by id)
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{hostOpened=true;P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
@@ -3434,7 +3442,7 @@ async function connectToHost(keepView){if(!store.get('authToken'))return;
   let opened=false;
   const fail=()=>{clearTimeout(deadline);if(opened||P2P.mode!=='follow')return;P2P.connecting=false;
     P2P.failCount=(P2P.failCount||0)+1;
-    if(P2P.failCount>=4){P2P.failCount=0;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host unreachable — taking over…');autoTakeOver();return}
+    if(P2P.failCount>=4){P2P.failCount=0;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);p2pStatus('Host unreachable — hosting here…');becomeHost();return} // the registered host is dead/unreachable → host here (overwrites the stale record, restores our own cache)
     setTimeout(()=>{if(P2P.mode==='follow'&&!P2P.connecting)connectToHost(true)},1200)}; // retry, keeping the view
   const deadline=setTimeout(fail,20000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
@@ -3443,7 +3451,10 @@ async function connectToHost(keepView){if(!store.get('authToken'))return;
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
     conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.connecting=false;P2P.hostConn=null;try{if(P2P.peer)P2P.peer.destroy()}catch{}P2P.peer=null;setTimeout(()=>{if(P2P.mode==='follow'&&!P2P.connecting)connectToHost(true)},700)}); // quiet reconnect, keep data on screen
     conn.on('error',fail)});
-  P2P.peer.on('error',fail)}
+  P2P.peer.on('error',e=>{
+    if(e&&e.type==='peer-unavailable'&&!opened&&P2P.mode==='follow'){ // registered host is definitively gone (never happens for a live host) → host here now, don't retry the dead peer
+      clearTimeout(deadline);P2P.connecting=false;P2P.failCount=0;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);p2pStatus('Host gone — hosting here…');becomeHost();return}
+    fail()})}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
 function exitFollow(){P2P.connecting=false;try{stopFollowAudio();stopHostAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
