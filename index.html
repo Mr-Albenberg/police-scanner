@@ -301,9 +301,9 @@
       .acct-btn{flex:0 0 auto;min-width:42px}
       .acct-menu{min-width:62vw}
       /* zone picker: a bubble on the right, under the top account bubble */
-      #side{top:calc(var(--top) + 184px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
-      body.np-open #side{top:calc(var(--top) + 270px)} /* drop below the notify prompt */
-      #notifPrompt{top:calc(var(--top) + 184px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
+      #side{top:calc(var(--top) + var(--hdr,186px) + 10px);right:var(--gap);left:auto;width:auto;z-index:1200;display:flex;justify-content:flex-end}
+      body.np-open #side{top:calc(var(--top) + var(--hdr,186px) + 96px)} /* drop below the notify prompt */
+      #notifPrompt{top:calc(var(--top) + var(--hdr,186px) + 10px);left:10px;right:10px;transform:none;width:auto} /* full-width on phones */
       #toast{display:none} /* phones: the red screen edge signals in-zone activity instead */
       #zone{transition:width .2s ease}
       .zpin{display:flex;align-items:center;justify-content:center;color:var(--cyan)}
@@ -1707,9 +1707,14 @@ $('mbAll').onclick=()=>{const pts=incidents.map(i=>[i.lat,i.lon]);
 // Keep the map filling the window on resize / rotate / mobile-keyboard — without
 // this Leaflet keeps its old size and the tiles render into a wrong-sized box.
 let _rsT;function fixMapSize(){clearTimeout(_rsT);_rsT=setTimeout(()=>{try{map.invalidateSize({pan:false})}catch{}},150)}
-addEventListener('resize',fixMapSize);addEventListener('orientationchange',fixMapSize);
+// Publish the header's real height as --hdr so the mobile zone bubble / notify
+// prompt sit just below it no matter how the header wraps (equalizer, extra
+// buttons, long status text) — instead of a fixed offset that drifts out of sync.
+function syncHdr(){try{const h=document.querySelector('header');if(h)document.documentElement.style.setProperty('--hdr',h.offsetHeight+'px')}catch{}}
+addEventListener('resize',()=>{fixMapSize();syncHdr()});addEventListener('orientationchange',()=>{fixMapSize();syncHdr()});
 if(window.visualViewport)visualViewport.addEventListener('resize',fixMapSize);
-setTimeout(fixMapSize,400); // settle after first layout
+try{new ResizeObserver(syncHdr).observe(document.querySelector('header'))}catch{}
+syncHdr();setTimeout(fixMapSize,400);setTimeout(syncHdr,400); // settle after first layout
 function fitPad(){const w=innerWidth<=760;return w?{paddingTopLeft:[20,200],paddingBottomRight:[20,innerHeight*0.4]}:{paddingTopLeft:[440,140],paddingBottomRight:[150,40]}}
 
 // While picking a spot, a tap moves the crosshair there
@@ -3359,13 +3364,15 @@ async function iceConfig(){try{const r=await fetch(AUTH_BASE+'/ice',{headers:aut
 
 function p2pOnAuth(loggedIn){if(!loggedIn){p2pStop();clearInterval(P2P.poll);return}p2pPaintButtons();clearInterval(P2P.poll);p2pCheckHost();P2P.poll=setInterval(p2pCheckHost,12000)}
 function p2pLbl(btn,txt){const s=btn.querySelector('.p2p-lbl');if(s)s.textContent=txt;else btn.textContent=txt}
-function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display='none';if(cb)cb.style.display='none';try{paintStartBtn()}catch{}try{paintConnMode()}catch{}return;
-  if(!hb||!cb)return;const u=!!store.get('authUser');
-  if(!u){hb.style.display='none';cb.style.display='none';return}
-  if(P2P.mode==='host'){hb.style.display='';p2pLbl(hb,'STOP');hb.classList.add('on');cb.style.display='none'}
-  else if(P2P.mode==='follow'){cb.style.display='';p2pLbl(cb,'STOP');cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;hb.style.display='none'}
-  else{hb.style.display='';p2pLbl(hb,'HOST');hb.classList.remove('on');cb.style.display='';cb.classList.remove('on');cb.disabled=false;p2pLbl(cb,'CONNECT');cb.classList.toggle('host-live',P2P.hostAvail);cb.title=P2P.hostAvail?'A device is hosting — tap to mirror it':'No host detected yet — tap to check and connect'}}
-async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow'||P2P.connecting)return;
+function p2pPaintButtons(){const hb=$('hostBtn'),cb=$('connectBtn');if(hb)hb.style.display='none'; // hosting is the START button; keep only a manual CONNECT
+  const u=!!store.get('authUser');
+  if(cb){
+    if(!u||P2P.mode==='host'||listening){cb.style.display='none'} // can't follow while you're the one hosting/listening
+    else if(P2P.mode==='follow'){cb.style.display='';cb.classList.add('on');cb.classList.remove('host-live');cb.disabled=false;p2pLbl(cb,'DISCONNECT');cb.title='Connected to a host — tap to disconnect'}
+    else{cb.style.display='';cb.classList.remove('on');cb.disabled=false;p2pLbl(cb,'CONNECT');cb.classList.toggle('host-live',!!P2P.hostAvail);cb.title=P2P.hostAvail?'A device on your account is hosting — tap to connect':'Tap to check for a host and connect'}
+  }
+  try{paintStartBtn()}catch{}try{paintConnMode()}catch{}}
+async function p2pCheckHost(){if(!store.get('authToken')||P2P.mode==='host'||P2P.mode==='follow'||P2P.connecting||P2P.noAuto)return;
   let h=null;try{h=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
   P2P.hostAvail=!!h;
   if(h&&!listening&&P2P.mode==='off'){connectToHost();return} // auto-connect to the account's host
@@ -3395,7 +3402,7 @@ async function becomeHost(){if(!store.get('authToken'))return;
     if(!takeIncs||!takeIncs.length)takeIncs=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);
     takeLines=snapshotFollowTranscript();
   }
-  P2P.mode='host';P2P.connecting=false; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
+  P2P.mode='host';P2P.connecting=false;P2P.noAuto=false; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
   let hostOpened=false;
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
@@ -3468,7 +3475,7 @@ async function connectToHost(keepView){if(!store.get('authToken'))return;
   if(!peerId){P2P.connecting=false;
     if(keepView){P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver();return} // host genuinely gone → elect a new one
     p2pStatus('No active host on your account right now.');setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},2500);return}
-  await ensurePeer();const cfg=await iceConfig();
+  let cfg;try{await ensurePeer();cfg=await iceConfig()}catch{P2P.connecting=false;return} // never leave the connect lock stuck on a load/ICE failure
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
   if(keepView){state('FOLLOWING HOST',true);try{paintStartBtn()}catch{}}else enterFollow();
   p2pStatus(keepView?'Reconnecting…':'Connecting to host…');
@@ -3646,7 +3653,7 @@ function initConnMode(){paintConnMode();
 }
 function p2pStop(){clearInterval(P2P.hb);clearInterval(P2P.sync);clearInterval(P2P.recentTimer);if(P2P.mode==='host'){try{saveRecent(true)}catch{}fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({stop:1})}).catch(()=>{})}if(P2P.mode==='follow'){exitFollow();return}if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';P2P.conns=new Map();p2pStatus('');$('start').disabled=false;p2pPaintButtons();p2pCheckHost()}
 $('hostBtn').onclick=()=>{P2P.mode==='host'?p2pStop():becomeHost()};
-$('connectBtn').onclick=()=>{P2P.mode==='follow'?p2pStop():connectToHost()};
+$('connectBtn').onclick=()=>{if(P2P.mode==='follow'){P2P.noAuto=true;p2pStop()}else{P2P.noAuto=false;connectToHost()}}; // manual disconnect stays disconnected; manual connect clears the suppression
 // Now that P2P is initialized, set up buttons/poll for the current auth state
 // (the earlier call from initAuth was skipped while P2P was still in its TDZ).
 try{p2pOnAuth(!!store.get('authUser'))}catch{}
