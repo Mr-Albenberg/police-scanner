@@ -413,8 +413,9 @@ async function handlePush(request, env, url, origin) {
     const title = String(b.title || 'Call in your zone').slice(0, 80);
     const href = String(b.href || origin).slice(0, 300); // app URL to open on click
     const callKey = await sha256Id(lat.toFixed(3) + ',' + lon.toFixed(3) + '|' + text.slice(0, 40));
-    if (await env.USERS.get('aseen:' + callKey)) return ok({ ok: true, dedup: true });
-    await env.USERS.put('aseen:' + callKey, '1', { expirationTtl: 300 });
+    // Cross-reporter de-dup is handled client-side now (one host reports each
+    // call once), so the per-call KV write was dropped to stay well under the
+    // free-tier write budget. The per-device throttle below is the only guard.
     const list = await env.USERS.list({ prefix: 'psub:' });
     const now = Date.now();
     let sent = 0;
@@ -467,7 +468,7 @@ export default {
     // (Call/event sync is peer-to-peer now; the KV feed was removed.)
 
     // --- Device coordination for same-account P2P (WebRTC via PeerJS) ---------
-    //  /host  POST {peerId}  register this device as the account's host (60s TTL)
+    //  /host  POST {peerId}  register this device as the account's host (11-min TTL)
     //         POST {stop:1}  stop hosting
     //         GET            get the account's current host peer id (or null)
     //  /ice   GET            ICE servers (Cloudflare STUN always; TURN if the
@@ -488,7 +489,7 @@ export default {
           if (b.stop) { await env.USERS.delete('host:' + uname); return new Response(JSON.stringify({ ok: true }), { headers: H }); }
           const peerId = String(b.peerId || '');
           if (!peerId) return new Response(JSON.stringify({ error: 'peerId required' }), { status: 400, headers: H });
-          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 150 });
+          await env.USERS.put('host:' + uname, JSON.stringify({ peerId, at: Date.now() }), { expirationTtl: 660 });
           return new Response(JSON.stringify({ ok: true }), { headers: H });
         }
         return new Response(JSON.stringify({ error: 'method' }), { status: 405, headers: H });

@@ -1747,7 +1747,7 @@ function refreshNearby(how){
   const w=$('where');w.classList.toggle('warn',!inCounty);
   w.textContent=!inCounty?'This spot is outside San Luis Obispo County, so calls on this feed won\'t be near it.':`${place||'Zone set'}${meAcc?` · ±${Math.round(meAcc)} m`:''}${how?` · ${how}`:''}`;
 }
-function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge();if(typeof pushSyncDebounced==='function')pushSyncDebounced()}
+function recheckZone(){for(const inc of incidents){const was=inc.inZone;inc.inZone=incDist(inc)<=radiusM();styleInc(inc);if(was!==inc.inZone)for(const e of inc.entries)if(e.el){e.zone=inc.inZone;e.hitAlert=!!(e.hits&&e.hits.length&&!(inc.precise&&!inc.inZone));e.alert=!!(e.zone||e.hitAlert);drawLine(e)}}updateEdge();if(typeof followRecheck==='function')followRecheck();if(typeof pushSyncDebounced==='function')pushSyncDebounced()}
 function geoError(err){
   const ios=/iPhone|iPad/.test(navigator.userAgent),w=$('where');w.classList.add('warn');zoneOpen(true);
   w.textContent=err&&err.code===1
@@ -2256,6 +2256,7 @@ function trackUnits(entry){
 let selUnit=null;
 const unitName=k=>(UNITS.get(k)||{}).label||UNIT_LABEL.get(k)||k;
 function unitStatusLine(T,p,now){
+  if(T._st)return T._st; // follower: host already computed the status text
   if(T.trip&&p.f<1&&now-T.trip.start<20*60e3){const left=T.trip.route?` · ~${Math.max(1,Math.round(p.left/60e3))} min left`:'';
     return`en route${T.trip.code3?' Code 3':''} to ${T.trip.to.label}${T.trip.fromLabel?` from ${T.trip.fromLabel}`:''}${left}`}
   const at=T.trip?T.trip.to:T.at;return at?`at ${at.label}`:'';
@@ -2380,6 +2381,7 @@ function reveal(entry){
     else if(inView&&!busy)entry.inc.marker.openPopup();
   }
   updateEdge();saveState();
+  try{alertScan()}catch{} // report in-zone calls the instant they're classified (don't wait on the 2s poll, which the OS throttles in the background)
   if(entry.alerted)return;
   if(entry.zone){entry.alerted=true;const g=entry.geo.g;raiseAlert('POLICE ACTIVITY NEAR YOU',`${entry.inc.label} (${(dist(me,[g.lat,g.lon])/MILE).toFixed(2)} mi away)${entry.kinds.length?' · '+entry.kinds.join(', '):''}: “${entry.text}”`,[g.lat,g.lon],`Police activity near you. ${entry.kinds.length?entry.kinds[0].toLowerCase()+' at ':''}${entry.inc.label.replace(/\(.*?\)/g,'')}, ${(dist(me,[g.lat,g.lon])/MILE).toFixed(1)} miles away.`)}
   else if(entry.hitAlert){entry.alerted=true;raiseAlert('WATCHED STREET MENTIONED',`${entry.hits.map(h=>h.name).join(', ')}: “${entry.text}”`,entry.inc?[entry.inc.lat,entry.inc.lon]:null)}
@@ -3346,12 +3348,12 @@ function autoTakeOver(){
 async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
-  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{}};
+  if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.sent={lines:{},incs:{},units:{}};
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
   P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
     if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
-    if(!cur||(++tick)%4===0)reg(id); // keep-alive WRITE only ~every 60s (TTL 150s) — far fewer KV writes
+    if(!cur||(++tick)%20===0)reg(id); // keep-alive WRITE only ~every 5 min (TTL 660s) — minimal KV writes
   },15000);startHostSync();hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
@@ -3364,16 +3366,26 @@ async function becomeHost(){if(!store.get('authToken'))return;
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
 function broadcast(msg){const s=JSON.stringify(msg);for(const c of P2P.conns.values()){try{c.send(s)}catch{}}}
 function snapLine(e){return{id:e.id,ts:+e.time,cls:e.el?e.el.className:'line',style:e.el?(e.el.getAttribute('style')||''):'',html:e.el?e.el.innerHTML:''}}
-function snapInc(inc){let iconHtml='',size=18,popup='',ll=null;try{const ic=inc.marker.getIcon();iconHtml=ic.options.html;size=(ic.options.iconSize&&ic.options.iconSize[0])||18}catch{}try{ll=inc.marker.getLatLng()}catch{}try{const p=inc.marker.getPopup();popup=p?p.getContent():''}catch{}
-  return{id:inc.id,lat:ll?ll.lat:inc.lat,lon:ll?ll.lng:inc.lon,iconHtml,size,popup,line:inc.line||null,lineColors:inc.line?incCols(inc):null,gone:!!inc.gone}}
+function snapInc(inc){let ll=null;try{ll=inc.marker.getLatLng()}catch{}
+  // Raw, zone-independent fields: the follower recomputes "in your zone" against
+  // its OWN zone and builds the pin itself, so two devices with different zones
+  // each colour calls by their own radius (not the host's).
+  const cols=incCols(inc);
+  return{id:inc.id,lat:ll?ll.lat:inc.lat,lon:ll?ll.lng:inc.lon,label:inc.label||'',cols,precise:!!inc.precise,active:inc.status==='active',resolved:inc.status==='resolved',line:inc.line||null,lineColors:inc.line?cols:null,gone:!!inc.gone}}
+// Each tracked unit's current rendered position + status, as a flat snapshot the
+// follower can replay (the full trip simulation references DOM entries, so only
+// the computed position/label/status travels — enough to show the dot moving).
+function snapUnits(){const now=Date.now(),out=[];for(const[k,T]of UNIT_TRACK){if(now-(T.last||0)>2*36e5)continue;const p=unitWhere(T,now);if(!p||!isFinite(p.lat)||!isFinite(p.lon))continue;out.push({k,lat:+p.lat.toFixed(5),lon:+p.lon.toFixed(5),label:unitName(k),st:unitStatusLine(T,p,now)||'',last:T.last||now})}return out}
 function startHostSync(){clearInterval(P2P.sync);P2P.sync=setInterval(()=>{if(!P2P.conns.size)return;
   const lm=[];for(const e of lines){if(!e.el)continue;const s=snapLine(e);const k=s.cls+'|'+s.style+'|'+s.html;if(P2P.sent.lines[s.id]!==k){P2P.sent.lines[s.id]=k;lm.push(s)}}
   const im=[];for(const inc of incidents){const s=snapInc(inc);const k=JSON.stringify(s);if(P2P.sent.incs[s.id]!==k){P2P.sent.incs[s.id]=k;im.push(s)}}
-  if(lm.length)broadcast({type:'lines',lines:lm});if(im.length)broadcast({type:'incs',incs:im})},1200)}
+  const um=[];for(const u of snapUnits()){const k=JSON.stringify(u);if(P2P.sent.units[u.k]!==k){P2P.sent.units[u.k]=k;um.push(u)}}
+  if(lm.length)broadcast({type:'lines',lines:lm});if(im.length)broadcast({type:'incs',incs:im});if(um.length)broadcast({type:'units',units:um})},1200)}
 function sendSnapshot(conn){try{
   conn.send(JSON.stringify({type:'snapshot-start'}));
   const is=incidents.map(snapInc);for(let i=0;i<is.length;i+=20)conn.send(JSON.stringify({type:'incs',incs:is.slice(i,i+20)}));
   const ls=lines.map(snapLine);for(let i=0;i<ls.length;i+=12)conn.send(JSON.stringify({type:'lines',lines:ls.slice(i,i+12)}));
+  const us=snapUnits();if(us.length)conn.send(JSON.stringify({type:'units',units:us}));
 }catch{}}
 function blobToDataUrl(blob){return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res(null);r.readAsDataURL(blob)})}
 async function sendClip(conn,id){let blob=null;const e=lines.find(x=>x.id===id);try{blob=e&&e.clipAudio?encodeWav(e.clipAudio):await ClipDB.get(id)}catch{}if(!blob){try{conn.send(JSON.stringify({type:'clip',id,url:null}))}catch{}return}const url=await blobToDataUrl(blob);try{conn.send(JSON.stringify({type:'clip',id,url}))}catch{}}
@@ -3397,8 +3409,23 @@ function exitFollow(){try{stopFollowAudio();stopHostAudio();followClips.clear();
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
 function applyRemote(msg){if(msg.type==='snapshot-start')clearView();
   else if(msg.type==='lines')(msg.lines||[]).forEach(applyLine);
-  else if(msg.type==='incs')(msg.incs||[]).forEach(applyInc);
+  else if(msg.type==='incs'){(msg.incs||[]).forEach(applyInc);followEdge()}
+  else if(msg.type==='units')applyUnits(msg.units||[]);
   else if(msg.type==='clip')onClip(msg.id,msg.url)}
+// A mirrored incident, coloured by THIS device's own zone (not the host's).
+function incDistLL(lat,lon,line){if(!me)return Infinity;let d=dist(me,[lat,lon]);if(line)for(const seg of line)for(const p of seg){const x=dist(me,p);if(x<d)d=x}return d}
+function followPin(s,inZone){const res=s.resolved,sz=s.line?16:s.precise?20:18;
+  const cls='pin'+((s.precise||res||s.line)?'':' approx')+((inZone&&!res)?' zone':'');
+  return L.divIcon({className:'',iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],popupAnchor:[0,-sz/2],html:`<div class="${cls}" style="width:${sz}px;height:${sz}px;background:${pieBg(s.cols||['#8aa'])}"></div>`});}
+function styleFollowInc(r){const s=r.s;r.inZone=incDistLL(s.lat,s.lon,s.line)<=radiusM();r.active=!!s.active;
+  try{r.marker.setIcon(followPin(s,r.inZone));r.marker.setZIndexOffset(r.inZone&&!s.resolved?500:0)}catch{}
+  try{r.lg.clearLayers();if(s.line&&s.lineColors)s.lineColors.forEach((c,i)=>r.lg.addLayer(L.polyline(s.line,{color:c,weight:6,opacity:s.resolved?.6:.9,dashArray:i?'14 14':null,interactive:false})))}catch{}}
+function followEdge(){try{document.body.classList.toggle('zone-active',[...P2P.followIncs.values()].some(r=>r.active&&r.inZone))}catch{}}
+function followRecheck(){try{if(P2P.mode!=='follow')return;for(const r of P2P.followIncs.values())styleFollowInc(r);followEdge()}catch{}} // P2P may be in its TDZ during first paint
+function applyUnits(list){for(const u of list){if(u.gone){const T=UNIT_TRACK.get(u.k);if(T){UNIT_TRACK.delete(u.k)}continue}
+    UNITS.set(u.k,Object.assign(UNITS.get(u.k)||{key:u.k,calls:[]},{label:u.label}));
+    UNIT_TRACK.set(u.k,{key:u.k,at:{lat:u.lat,lon:u.lon,label:u.label},_st:u.st,last:u.last||Date.now()});}
+  try{drawUnits();paintUnits()}catch{}}
 // Followers can press play on a mirrored line; the clip is fetched from the host on demand.
 const followClips=new Map(),followPending=new Set();let followAudio=null,followPlayingId=null;
 function markPlay(id,on){const el=document.getElementById('fl_'+id);if(el)el.classList.toggle('fl-playing',on)}
@@ -3412,9 +3439,9 @@ function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.
   el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
 function applyInc(s){let r=P2P.followIncs.get(s.id);
   if(s.gone){if(r){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.delete(s.id);return}
-  if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map)}catch{}}
-  try{r.marker.setLatLng([s.lat,s.lon]);r.marker.setIcon(L.divIcon({className:'',iconSize:[s.size,s.size],iconAnchor:[s.size/2,s.size/2],popupAnchor:[0,-s.size/2],html:s.iconHtml}));if(s.popup)r.marker.bindPopup(s.popup,{maxWidth:Math.min(300,innerWidth-36),...popPad()})}catch{}
-  try{r.lg.clearLayers();if(s.line&&s.lineColors)s.lineColors.forEach((c,i)=>r.lg.addLayer(L.polyline(s.line,{color:c,weight:6,opacity:.9,dashArray:i?'14 14':null})))}catch{}}
+  if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map);r.marker.on('click',()=>{try{map.setView([r.s.lat,r.s.lon],Math.max(map.getZoom(),15))}catch{}})}catch{}}
+  r.s=s;try{r.marker.setLatLng([s.lat,s.lon]);if(s.label)r.marker.bindPopup('<div class="pop"><div class="pl">📍 '+esc(s.label)+'</div></div>',{maxWidth:Math.min(300,innerWidth-36),...popPad()})}catch{}
+  styleFollowInc(r);}
 // --- Cross-account call sync via the relay feed -----------------------------
 // linkMode 'always': a listening device publishes its calls to the shared feed
 // and idle devices pull + render them, so calls sync between accounts with no
