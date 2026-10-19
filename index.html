@@ -3209,14 +3209,17 @@ async function pushEnable(opts){
   try{
     let sub=await reg.pushManager.getSubscription();
     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToU8(VAPID_PUBLIC)});
-    const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})});
-    if(!r.ok)throw 0;
+    const key=psubKey(sub);
+    if(store.get('psubKey')!==key){ // only hit the server (a KV write) when the device or its zone actually changed
+      const r=await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})});
+      if(!r.ok)throw 0;store.set('psubKey',key);
+    }
   }catch{if(!silent)setPushHint('Couldn’t save your alert zone — try again.');return false}
   store.set('pushOn','1');store.del('pushOff');paintPush();setPushHint('On — you’ll get a notification when a call drops in your zone, even with the app closed.');return true
 }
 async function pushDisable(){
   try{const sub=swReg&&await swReg.pushManager.getSubscription();if(sub){await fetch(AUTH_BASE+'/push/unsubscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});await sub.unsubscribe()}}catch{}
-  store.del('pushOn');paintPush();setPushHint('Off — you won’t get call notifications on this device.')
+  store.del('pushOn');store.del('psubKey');paintPush();setPushHint('Off — you won’t get call notifications on this device.')
 }
 // Alerts default ON: subscribe this device automatically. Silent when permission
 // is already granted; otherwise prompt once, but only during a real user gesture.
@@ -3244,9 +3247,11 @@ function showNotifPrompt(){
   p.classList.add('show');document.body.classList.add('np-open');
 }
 var pushSyncT;function pushSyncDebounced(){clearTimeout(pushSyncT);pushSyncT=setTimeout(()=>{pushSync()},900)}
+function psubKey(sub){return (sub&&sub.endpoint||'')+'|'+JSON.stringify(zonePayload()||0)}
 async function pushSync(){ // zone or radius changed — update the stored zone
   if(store.get('pushOn')!=='1'||!me)return;const reg=await initSW();if(!reg)return;
-  try{const sub=await reg.pushManager.getSubscription();if(!sub)return;await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})}).catch(()=>{})}catch{}
+  try{const sub=await reg.pushManager.getSubscription();if(!sub)return;const key=psubKey(sub);if(store.get('psubKey')===key)return; // zone unchanged → no redundant write
+    await fetch(AUTH_BASE+'/push/subscribe',{method:'POST',headers:authHdr(),body:JSON.stringify({subscription:sub.toJSON(),zone:zonePayload()})}).catch(()=>{});store.set('psubKey',key)}catch{}
 }
 // --- Notification content -------------------------------------------------
 // Header = the address; body = "Type: what's happening, code 3".
@@ -3410,8 +3415,8 @@ async function becomeHost(){if(!store.get('authToken'))return;
   P2P.peer.on('open',async id=>{hostOpened=true;P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
     if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
-    if(!cur||(++tick)%4===0)reg(id); // keep-alive WRITE ~every 60s (TTL 150s) — reliable presence + quick stale cleanup
-  },15000);startHostSync();clearInterval(P2P.recentTimer);P2P.recentTimer=setInterval(()=>saveRecent(),240000);setTimeout(()=>saveRecent(true),8000);hostBanner();p2pPaintButtons()});
+    if(!cur||(++tick)%20===0)reg(id); // keep-alive WRITE only ~every 5 min (TTL 900s) — minimal KV writes; a dead host self-heals on the next connect (peer-unavailable) regardless of TTL
+  },15000);startHostSync();clearInterval(P2P.recentTimer);P2P.recentTimer=setInterval(()=>saveRecent(),720000);setTimeout(()=>saveRecent(true),8000);hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
       if(m.type==='hello'){if(m.zone)P2P.zones.set(conn.peer,m.zone);sendSnapshot(conn);if(m.audio)setTimeout(()=>hostCall(conn.peer),300)} // remember this device's zone; stream audio only to live-listen followers
