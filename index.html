@@ -3349,7 +3349,9 @@ function autoTakeOver(){
 }
 async function becomeHost(){if(!store.get('authToken'))return;
   if(P2P.mode==='follow'&&P2P.hostConn){try{P2P.hostConn.send(JSON.stringify({type:'takeover'}))}catch{}} // tell the current host to step down
+  P2P.mode='host'; // claim the role NOW so the auto-connect poll / takeover don't race us into following during async setup
   p2pStatus('Starting host…');await ensurePeer();const cfg=await iceConfig();
+  let hostOpened=false;
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='host';P2P.conns=new Map();P2P.zones=new Map();P2P.sent={lines:{},incs:{},units:{}};
   // Seed recent calls so a takeover/cold start isn't blank: prefer the state we
   // were just shown as a follower (zero extra fetch), else the saved backlog.
@@ -3357,10 +3359,10 @@ async function becomeHost(){if(!store.get('authToken'))return;
     for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();
     if(handoff&&handoff.length)seedHostIncs(handoff);else backfillRecent(true);}
   const reg=id=>fetch(AUTH_BASE+'/host',{method:'POST',headers:authHdr(),body:JSON.stringify({peerId:id})}).catch(()=>{});
-  P2P.peer.on('open',async id=>{P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
+  P2P.peer.on('open',async id=>{hostOpened=true;P2P.myPeerId=id;await reg(id);clearInterval(P2P.hb);let tick=0;P2P.hb=setInterval(async()=>{
     let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
     if(cur&&cur!==id){p2pStop();return} // someone else took over → step down (this is a read, not a write)
-    if(!cur||(++tick)%20===0)reg(id); // keep-alive WRITE only ~every 5 min (TTL 660s) — minimal KV writes
+    if(!cur||(++tick)%12===0)reg(id); // keep-alive WRITE only ~every 3 min (TTL 420s) — few KV writes, quick stale cleanup
   },15000);startHostSync();clearInterval(P2P.recentTimer);P2P.recentTimer=setInterval(()=>saveRecent(),240000);setTimeout(()=>saveRecent(true),8000);hostBanner();p2pPaintButtons()});
   P2P.calls=new Map();
   P2P.peer.on('connection',conn=>{conn.on('open',()=>{P2P.conns.set(conn.peer,conn);sendSnapshot(conn);hostBanner()});conn.on('data',d=>{try{const m=JSON.parse(d);
@@ -3369,7 +3371,10 @@ async function becomeHost(){if(!store.get('authToken'))return;
       else if(m.type==='audioReq')hostCall(conn.peer);
       else if(m.type==='audioStop'){try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{}}
       else if(m.type==='clipReq')sendClip(conn,m.id);else if(m.type==='takeover')p2pStop()}catch{}});conn.on('close',()=>{P2P.conns.delete(conn.peer);P2P.zones&&P2P.zones.delete(conn.peer);try{const mc=P2P.calls&&P2P.calls.get(conn.peer);if(mc)mc.close();P2P.calls&&P2P.calls.delete(conn.peer)}catch{};hostBanner()});conn.on('error',()=>{P2P.conns.delete(conn.peer);P2P.zones&&P2P.zones.delete(conn.peer);hostBanner()})});
-  P2P.peer.on('error',e=>p2pStatus('Host error: '+e.type));
+  P2P.peer.on('error',e=>{p2pStatus('Host error: '+(e&&e.type||''));
+    if(!hostOpened){ // never came up — release the role so a retry (or another device) can host
+      clearInterval(P2P.hb);try{P2P.peer&&P2P.peer.destroy()}catch{}P2P.peer=null;if(P2P.mode==='host')P2P.mode='off';
+      setTimeout(()=>{if(P2P.mode==='off'&&!listening)p2pCheckHost()},2000);}});
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
 function broadcast(msg){const s=JSON.stringify(msg);for(const c of P2P.conns.values()){try{c.send(s)}catch{}}}
@@ -3404,14 +3409,26 @@ async function connectToHost(){if(!store.get('authToken'))return;p2pStatus('Look
   await ensurePeer();const cfg=await iceConfig();
   if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=new Peer(undefined,{config:cfg});P2P.mode='follow';p2pPaintButtons();
   enterFollow();p2pStatus('Connecting to host…');
-  let opened=false;const deadline=setTimeout(()=>{if(!opened&&P2P.mode==='follow'){p2pStatus('Couldn’t reach the host — tap CONNECT to retry.');exitFollow();setTimeout(()=>{if(P2P.mode==='off')p2pStatus('')},4000)}},22000);
+  let opened=false,settled=false;
+  // The registered host may be a stale record for a device that's gone. Rather
+  // than loop forever on a dead peer, take over and host on THIS device — which
+  // also overwrites the stale record, so the account self-heals in one attempt.
+  const takeover=async()=>{if(settled)return;settled=true;clearTimeout(deadline);
+    if(opened||P2P.mode!=='follow'||listening)return;
+    try{if(P2P.peer)P2P.peer.destroy()}catch{}P2P.peer=null;P2P.mode='off';
+    // The host slot may have changed while we were failing — prefer a live host
+    // that isn't the dead peer we just tried; otherwise take over by hosting.
+    let cur=null;try{cur=(await (await fetch(AUTH_BASE+'/host',{headers:authHdr()})).json()).peerId}catch{}
+    if(cur&&cur!==peerId){connectToHost();return}
+    p2pStatus('Host unreachable — hosting on this device…');becomeHost()};
+  const deadline=setTimeout(takeover,9000);
   P2P.peer.on('call',call=>{try{call.answer()}catch{}call.on('stream',s=>playHostAudio(s))}); // host's live audio
   P2P.peer.on('open',()=>{const conn=P2P.peer.connect(peerId,{reliable:true});P2P.hostConn=conn;
-    conn.on('open',()=>{opened=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
+    conn.on('open',()=>{opened=true;settled=true;clearTimeout(deadline);try{conn.send(JSON.stringify({type:'hello',audio:connMode()==='live',zone:zonePayload()}))}catch{}p2pStatus(connMode()==='live'?'Following host · live audio':'Following host · sync + alerts');p2pPaintButtons();try{paintConnMode()}catch{}});
     conn.on('data',d=>{try{applyRemote(JSON.parse(d))}catch{}});
     conn.on('close',()=>{clearTimeout(deadline);if(P2P.mode!=='follow')return;P2P.handoff=[...P2P.followIncs.values()].map(r=>r.s).filter(Boolean);exitFollow();p2pStatus('Host stopped — taking over…');autoTakeOver()});
-    conn.on('error',()=>{clearTimeout(deadline);p2pStatus('Could not connect to the host.');exitFollow()})});
-  P2P.peer.on('error',e=>{clearTimeout(deadline);p2pStatus('Connect error: '+e.type);exitFollow()})}
+    conn.on('error',()=>takeover())});
+  P2P.peer.on('error',()=>takeover())}
 function enterFollow(){if(listening){try{stop()}catch{}}$('start').disabled=false;clearView();state('FOLLOWING HOST',true);P2P.mode='follow';try{paintStartBtn()}catch{}const box=$('transcript');if(!box.querySelector('[id^="fl_"]'))box.innerHTML='<div class="empty" id="followWait"><b>Connected to the host.</b> Its calls, map and live audio appear here. Tap TAKE OVER to run on this device instead.</div>'}
 function exitFollow(){try{stopFollowAudio();stopHostAudio();followClips.clear();followPending.clear()}catch{}$('start').disabled=false;for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear();if(P2P.peer){try{P2P.peer.destroy()}catch{}}P2P.peer=null;P2P.mode='off';state('STOPPED');p2pPaintButtons();p2pCheckHost()}
 function clearView(){try{focusedInc=null;UNITS.clear();UNIT_TRACK.clear();drawUnits();paintUnits()}catch{}lines.length=0;$('transcript').innerHTML='';$('tCount').textContent='';try{incidentLayer.clearLayers()}catch{}incidents.length=0;try{updateEdge()}catch{}for(const r of P2P.followIncs.values()){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.clear()}
