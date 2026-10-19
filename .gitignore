@@ -1,2 +1,6 @@
 # Wrangler local state/cache (not for the repo)
 relay/.wrangler/
+
+# Build tooling + generated output (Vercel builds dist/ on deploy)
+node_modules/
+dist/

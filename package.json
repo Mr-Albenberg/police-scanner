@@ -1,0 +1,13 @@
+{
+  "name": "police-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SLO Police Scanner — static site. `npm run build` emits an obfuscated dist/.",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "html-minifier-terser": "^7.2.0",
+    "terser": "^5.36.0"
+  }
+}
