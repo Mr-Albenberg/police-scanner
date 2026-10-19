@@ -82,6 +82,13 @@
     #feed.collapsed #transcript{display:none}
     .phead{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 14px;border-bottom:1px solid var(--line2);color:var(--cyan);font-size:10px;font-weight:850;letter-spacing:.15em;min-height:46px}
     .phead .spacer{flex:1}.phead button{min-height:30px;padding:0 10px;font-size:11px}
+    #tFilter{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid var(--line2)}
+    #feed.collapsed #tFilter{display:none}
+    #tSearch{flex:1 1 150px;min-width:110px;min-height:34px;background:#0a1824;border:1px solid #2a5068;border-radius:8px;color:var(--text);font:600 13px Inter,system-ui,sans-serif;padding:0 10px}
+    #tSearch:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px #0cf2}
+    #tTypes{display:flex;gap:4px;flex-wrap:wrap}
+    #tTypes button{min-height:30px;padding:0 9px;font-size:10px;font-weight:850;letter-spacing:.04em;background:#102c3e;border:1px solid #2f5a73;color:#9db8c7;border-radius:8px}
+    #tTypes button.on{background:#0f3b33;border-color:var(--green);color:var(--green)}
     .muted{color:var(--muted);font-weight:700;letter-spacing:.08em}
     #upcoming{color:var(--amber);letter-spacing:.06em}
     .grab{display:none}
@@ -513,6 +520,15 @@
     <div class="grab"></div>
     <div class="phead" id="feedHead">LIVE TRANSCRIPT <span class="muted" id="tCount"></span><span class="muted" id="upcoming"></span><span class="spacer"></span><button class="secondary" id="unitsBtn" type="button" title="Units heard on the radio and their last status">UNITS <span id="unitsN"></span></button><button class="secondary" id="feedToggle" type="button" title="Collapse the transcript">HIDE</button></div>
     <div id="unitsPanel"><div id="unitsList"></div></div>
+    <div id="tFilter">
+      <input id="tSearch" type="search" placeholder="Search calls, streets, units…" autocomplete="off" aria-label="Search the transcript">
+      <div id="tTypes" role="group" aria-label="Filter by type">
+        <button type="button" data-sf="medical" title="Show medical calls">MED</button>
+        <button type="button" data-sf="fire" title="Show fire calls">FIRE</button>
+        <button type="button" data-sf="police" title="Show police calls">PD</button>
+        <button type="button" data-sf="resolved" title="Show resolved calls">RESOLVED</button>
+      </div>
+    </div>
     <div id="transcript"><div class="empty" id="emptyMsg"><b>Tap START LISTENING.</b> Calls appear here as you hear them and are pinned on the map. Tap ▶ to hear a call again. Green pins are resolved.</div></div>
     <div id="legend" aria-label="Pin colors"></div>
   </aside>
@@ -1925,7 +1941,24 @@ function drawLine(entry){
   const play=canPlay?`<button class="play${entry.playing?' on':''}" type="button" aria-label="${entry.playing?'Stop':'Play'} this call" title="${entry.playing?'Stop':'Hear this call'}">${entry.playing?ICON_STOP:ICON_PLAY}</button>`:'';
   if(entry.check&&!entry.partial)tags.push(`<span class="tag chk" title="${esc(entry.checkNote||entry.check)}">${esc(entry.check)}</span>`);
   el.innerHTML=`<div class="t">${fmtTime(entry.time)}${play}</div><div class="x">${renderText(entry)}${tags.length?`<div class="tags">${tags.join('')}</div>`:''}</div>`;
+  el.dataset.svcs=servicesOf(entry).join(' ');try{filterLine(el)}catch{}
 }
+// --- Transcript search / type filter -----------------------------------------
+const TFILT={q:'',types:new Set()};
+function lineFilterable(el){return el&&el.classList&&el.classList.contains('line')||(el&&el.id&&el.id.indexOf('fl_')===0)}
+function filterLine(el){if(!el||!el.style)return;const q=TFILT.q,types=TFILT.types;
+  if(!q&&!types.size){el.style.display='';return}
+  let ok=!q||el.textContent.toLowerCase().includes(q);
+  if(ok&&types.size){const svcs=(el.dataset.svcs||'').split(' ').filter(Boolean),resolved=el.classList.contains('resolved');
+    ok=[...types].some(t=>t==='resolved'?resolved:svcs.includes(t))}
+  el.style.display=ok?'':'none'}
+function applyTranscriptFilter(){const box=$('transcript');if(!box)return;let shown=0;
+  for(const el of box.children){if(el.classList.contains('empty')){continue}filterLine(el);if(el.style.display!=='none')shown++}
+  let hint=$('tNoMatch');
+  if(!shown&&(TFILT.q||TFILT.types.size)){if(!hint){hint=document.createElement('div');hint.id='tNoMatch';hint.className='empty';box.appendChild(hint)}hint.textContent='No calls match your search.';hint.style.display=''}
+  else if(hint)hint.style.display='none'}
+function initTranscriptFilter(){const s=$('tSearch');if(s)s.oninput=()=>{TFILT.q=s.value.trim().toLowerCase();applyTranscriptFilter()};
+  const tt=$('tTypes');if(tt)tt.onclick=e=>{const b=e.target.closest('button[data-sf]');if(!b)return;const t=b.dataset.sf;if(TFILT.types.has(t))TFILT.types.delete(t);else TFILT.types.add(t);b.classList.toggle('on',TFILT.types.has(t));applyTranscriptFilter()}}
 // Text work, Claude review and mapping happen before the call is shown.
 // common mishearings of response codes ("go to you" at the start of a call is "Code 2")
 // License plates read on the radio ("8 Adam, 48803" = 8A48803), vehicle descriptions and what was reported
@@ -3444,7 +3477,7 @@ async function becomeHost(){if(!store.get('authToken'))return;
   if(!listening){try{play()}catch{}}}
 function hostBanner(){if(P2P.mode==='host')p2pStatus('Hosting to your account · '+P2P.conns.size+' device'+(P2P.conns.size===1?'':'s')+' connected')}
 function broadcast(msg){const s=JSON.stringify(msg);for(const c of P2P.conns.values()){try{c.send(s)}catch{}}}
-function snapLine(e){return{id:e.id,ts:+e.time,cls:e.el?e.el.className:'line',style:e.el?(e.el.getAttribute('style')||''):'',html:e.el?e.el.innerHTML:''}}
+function snapLine(e){let style=e.el?(e.el.getAttribute('style')||''):'';style=style.replace(/display\s*:[^;]+;?/gi,'');return{id:e.id,ts:+e.time,cls:e.el?e.el.className:'line',style,html:e.el?e.el.innerHTML:'',svcs:e.el?(e.el.dataset.svcs||''):''}} // strip display so the host's own search filter doesn't hide the line on followers
 function snapInc(inc){let ll=null;try{ll=inc.marker.getLatLng()}catch{}
   // Raw, zone-independent fields: the follower recomputes "in your zone" against
   // its OWN zone and builds the pin itself, so two devices with different zones
@@ -3588,7 +3621,7 @@ function onClip(id,url){const wanted=followPending.delete(id);if(url){followClip
 $('transcript').addEventListener('click',e=>{if(P2P.mode!=='follow')return;const fl=e.target.closest('[id^="fl_"]');if(!fl)return;if(e.target.closest('.play')){e.stopPropagation();e.preventDefault();followPlay(fl.id.slice(3))}});
 function applyLine(l){const box=$('transcript');const em=$('emptyMsg');if(em)em.remove();const fw=$('followWait');if(fw)fw.remove();let el=document.getElementById('fl_'+l.id);
   if(!el){el=document.createElement('div');el.id='fl_'+l.id;el.dataset.ts=l.ts;let placed=false;for(const c of box.children){if(+(c.dataset.ts||0)<l.ts){box.insertBefore(el,c);placed=true;break}}if(!placed)box.appendChild(el)}
-  el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;$('tCount').textContent='· '+box.children.length}
+  el.className=l.cls||'line';if(l.style)el.setAttribute('style',l.style);el.innerHTML=l.html;el.dataset.svcs=l.svcs||'';try{filterLine(el)}catch{}$('tCount').textContent='· '+box.children.length}
 function applyInc(s){let r=P2P.followIncs.get(s.id);
   if(s.gone){if(r){try{map.removeLayer(r.marker);if(r.lg)map.removeLayer(r.lg)}catch{}}P2P.followIncs.delete(s.id);return}
   if(!r){r={marker:L.marker([s.lat,s.lon]),lg:L.layerGroup()};P2P.followIncs.set(s.id,r);try{r.marker.addTo(map);r.lg.addTo(map);r.marker.on('click',()=>{try{map.setView([r.s.lat,r.s.lon],Math.max(map.getZoom(),15))}catch{}})}catch{}}
@@ -3664,6 +3697,7 @@ $('connectBtn').onclick=()=>{if(P2P.mode==='follow'){P2P.noAuto=true;p2pStop()}e
 // (the earlier call from initAuth was skipped while P2P was still in its TDZ).
 try{p2pOnAuth(!!store.get('authUser'))}catch{}
 try{initConnMode()}catch{}
+try{initTranscriptFilter()}catch{}
 try{initPushAlerts()}catch{}
 </script>
 </body>
