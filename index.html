@@ -2977,6 +2977,8 @@ function pbStart(){
   const c=getCtx();if(!c)return false;
   try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch{} // play even with the iPhone ring switch on silent
   if(!PB.gain){PB.gain=c.createGain();PB.gain.connect(c.destination)}
+  if(!PB.analyser){PB.analyser=c.createAnalyser();PB.analyser.fftSize=512;PB.analyser.smoothingTimeConstant=0.3;try{PB.gain.connect(PB.analyser)}catch{}} // tap the live output for the header equalizer — synced to what you actually hear
+  vizAnalyser=PB.analyser;
   c.resume&&c.resume();
   const b=c.createBuffer(1,1,c.sampleRate),s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start(); // unlocks audio on iPhone
   PB.on=true;PB.next=0;PB.started=false;return true;
@@ -2996,11 +2998,19 @@ let hls=null,listening=false,wakeLock=null;
 function state(text,live=false){$('status').textContent=text;$('beacon').classList.toggle('live',live)}
 // Header equalizer: setRadioLevel() feeds it peaks; the RAF loop decays them so
 // the bars rise on speech and settle in silence. Runs cheaply all session.
-const VIZW=[0.45,0.72,0.95,1,0.9,0.68,0.42];let _lvl=0,_vizEls=null;
-function setRadioLevel(p,reset){p=+p||0;if(p<0)p=0;if(p>1)p=1;if(reset)_lvl=0;if(p>_lvl)_lvl=p}
+const VIZW=[0.5,0.78,0.95,1,0.9,0.72,0.5];let _lvl=0,_vizEls=null,_vizBuf=null,vizAnalyser=null;
+const VIZ_SENS=4.6,VIZ_ON=0.03; // higher = more sensitive (quieter talking still moves the bars)
+function setRadioLevel(p,reset){p=+p||0;if(p<0)p=0;if(p>1)p=1;if(reset)_lvl=0;if(p>_lvl)_lvl=p} // fallback when there's no analyser (e.g. a sync-only follower)
+// Peak amplitude of the audio that's playing RIGHT NOW (0..1) — reading the live
+// output node means the bars move exactly when you hear the sound, not when the
+// chunk was decoded ~0.6 s earlier.
+function analyserPeak(){const an=vizAnalyser;if(!an)return null;try{const n=an.fftSize;if(!_vizBuf||_vizBuf.length!==n)_vizBuf=new Uint8Array(n);an.getByteTimeDomainData(_vizBuf);let pk=0;for(let i=0;i<n;i++){const d=Math.abs(_vizBuf[i]-128);if(d>pk)pk=d}return pk/128}catch{return null}}
 function vizTick(){const v=$('viz');if(v){if(!_vizEls)_vizEls=[...v.querySelectorAll('i')];
-  _lvl*=0.86;const on=_lvl>0.02;v.classList.toggle('on',on);
-  for(let i=0;i<_vizEls.length;i++){let h=10;if(on)h=Math.max(14,Math.min(100,_lvl*VIZW[i%VIZW.length]*(0.6+Math.random()*0.75)*175));_vizEls[i].style.height=h+'%'}}
+  const live=analyserPeak();let lv;
+  if(live!=null){lv=_lvl=Math.max(Math.min(1,live*VIZ_SENS),_lvl*0.78)} // instant attack, quick release → snappy but settles between words
+  else{_lvl*=0.86;lv=_lvl}
+  const on=lv>VIZ_ON;v.classList.toggle('on',on);
+  for(let i=0;i<_vizEls.length;i++){let h=9;if(on)h=Math.max(16,Math.min(100,lv*VIZW[i%VIZW.length]*(0.72+Math.random()*0.56)*120));_vizEls[i].style.height=h+'%'}}
   requestAnimationFrame(vizTick)}
 requestAnimationFrame(vizTick);
 function startSound(){
@@ -3587,9 +3597,11 @@ let hostAudioEl=null;
 function playHostAudio(stream){ // follower: play the host's live audio
   try{if(!hostAudioEl){hostAudioEl=new Audio();hostAudioEl.autoplay=true;hostAudioEl.setAttribute('playsinline','')}
     hostAudioEl.srcObject=stream;hostAudioEl.muted=!$('optSound').checked;hostAudioEl.play().catch(()=>{});
-    if(listening)state('FOLLOWING HOST',true);}catch{}
+    if(listening)state('FOLLOWING HOST',true);
+    // tap the incoming stream so the header equalizer moves with the host's audio too
+    try{const c=getCtx&&getCtx();if(c&&stream){c.resume&&c.resume();const src=c.createMediaStreamSource(stream);const an=c.createAnalyser();an.fftSize=512;an.smoothingTimeConstant=0.3;src.connect(an);vizAnalyser=an}}catch{}}catch{}
 }
-function stopHostAudio(){try{if(hostAudioEl){hostAudioEl.pause();hostAudioEl.srcObject=null}}catch{}}
+function stopHostAudio(){try{if(hostAudioEl){hostAudioEl.pause();hostAudioEl.srcObject=null}}catch{};if(vizAnalyser&&vizAnalyser!==PB.analyser)vizAnalyser=null}
 // Two connection modes: 'sync' (default — auto-connect for events/map + push
 // alerts, no audio) and 'live' (also stream the host's live audio).
 // A follower tells its host about its location bubble, so the host can fire a
