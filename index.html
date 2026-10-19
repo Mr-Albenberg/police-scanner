@@ -20,7 +20,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
     /* Full-screen dispatch map; every control floats on it, matching the SLO Live Operations dashboard. */
-    :root{--ink:#03080d;--glass:#071522ee;--glass2:#0a1824f2;--line:#26526a;--line2:#1f465b;--text:#eaf6fb;--muted:#9db8c7;--dim:#7d9cad;--cyan:#61dcff;--orange:#ff864e;--green:#53ebb0;--red:#ff4e5e;--amber:#e3b34f;
+    :root{--ink:#03080d;--glass:#071522ee;--glass2:#0a1824f2;--line:#26526a;--line2:#1f465b;--text:#eaf6fb;--muted:#a7c0ce;--dim:#8ea8b9;--cyan:#61dcff;--orange:#ff864e;--green:#53ebb0;--red:#ff4e5e;--amber:#e3b34f;
       --top:max(14px,env(safe-area-inset-top));--gap:14px;--sheet:150px}
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;-webkit-text-size-adjust:100%}
@@ -512,7 +512,7 @@
       <button id="liveBtn" class="secondary p2p-btn" type="button" title="Hear the host's live audio" style="display:none"><svg class="p2pic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span class="p2p-lbl">LISTEN LIVE</span></button>
       <button id="alertsBtn" class="secondary" type="button" title="Alerts off. Tap to turn on.">ALERTS OFF</button>
       <div class="acct-wrap">
-        <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest"></span></button>
+        <button id="acctBtn" class="secondary acct-btn" type="button" title="Account & settings" aria-label="Account and settings" aria-haspopup="true" aria-expanded="false"><span id="acctAvatar" class="acct-avatar guest"></span></button>
         <div id="acctMenu" class="acct-menu" hidden>
           <div class="acct-menu-name" id="acctMenuName">Guest · shared keys</div>
           <button type="button" class="acct-menu-item" id="menuProfile" style="display:none"><svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Profile</span></button>
@@ -530,7 +530,7 @@
     .fl-playing .play{color:var(--cyan)!important;box-shadow:0 0 0 2px var(--cyan)}
     @media(max-width:760px){.p2p-banner{top:auto;bottom:calc(var(--sheet,84px) + 52px);font-size:10.5px}}
   </style>
-  <div id="p2pBanner" class="p2p-banner" style="display:none"></div>
+  <div id="p2pBanner" class="p2p-banner" role="status" aria-live="polite" style="display:none"></div>
 
   <aside id="feed" class="glass" aria-label="Live transcript">
     <div class="grab"></div>
@@ -2689,9 +2689,12 @@ async function handleCloud(item){
   const prov=PROVIDERS[engine()],key=sttKey(),wav=encodeWav(item.audio);
   aiStatus('TRANSCRIBING');
   let res,altP=null;
-  // a second, independent hearing on Groq's other Whisper model (its own free allowance) to double-check the words
-  if(engine()==='groq'&&!item.partial&&groqModel()==='whisper-large-v3'&&Date.now()>(groqLimited['whisper-large-v3-turbo']||0))
-    altP=prov.run(wav,currentPrompt,key,[],'whisper-large-v3-turbo').then(r=>cleanText(r.text)).catch(e=>{if(e.status===429)groqLimited['whisper-large-v3-turbo']=Date.now()+60e3;return null});
+  // A second, independent hearing on Groq's OTHER Whisper model (its own free
+  // allowance) to cross-check the words — now runs whichever model isn't the
+  // primary, so a call gets double-checked even while one model is throttled.
+  if(engine()==='groq'&&!item.partial){const altModel=groqModel()==='whisper-large-v3'?'whisper-large-v3-turbo':'whisper-large-v3';
+    if(Date.now()>(groqLimited[altModel]||0))
+      altP=prov.run(wav,currentPrompt,key,[],altModel).then(r=>cleanText(r.text)).catch(e=>{if(e.status===429)groqLimited[altModel]=Date.now()+60e3;return null});}
   try{
     res=await prov.run(wav,currentPrompt,key,keyTerms());
     let text=cleanText(res.text);
@@ -2705,10 +2708,12 @@ async function handleCloud(item){
     if(!item.retried){item.retried=true;queue.unshift(item);await sleep(1500);return}
     console.warn(e);return;
   }
-  if(!res.text)return;
-  {const mt=morseFromText(res.text);if(mt){await showCall(item,{text:mt.text,unc:new Set(),agree:true},{morse:mt,partial:item.partial});return}}
-  const unc=new Set(res.unclear.flatMap(t=>wordsOf(t)).filter(w=>!COMMON_EN.has(w)&&w.length>2&&!/^\d/.test(w)));
   let alt=altP?await altP:null;
+  if(!res.text){ // the primary model heard nothing — fall back to the second model's hearing if it caught the call
+    if(alt&&!promptEcho(alt)){res.text=alt;res.unclear=res.unclear||[];alt=null}else return;
+  }
+  {const mt=morseFromText(res.text);if(mt){await showCall(item,{text:mt.text,unc:new Set(),agree:true},{morse:mt,partial:item.partial});return}}
+  const unc=new Set((res.unclear||[]).flatMap(t=>wordsOf(t)).filter(w=>!COMMON_EN.has(w)&&w.length>2&&!/^\d/.test(w)));
   if(alt&&!promptEcho(alt)){const d=hearingDiff(res.text,alt);if(d.length){for(const w of d)unc.add(w)}else alt=null}else alt=null;
   await showCall(item,{text:res.text,unc,agree:!unc.size},{cloud:prov.name,partial:item.partial,toned:ak.toned,alt});
 }
