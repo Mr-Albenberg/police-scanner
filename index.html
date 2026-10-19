@@ -185,10 +185,10 @@
     .sat{filter:brightness(.78) saturate(.9) contrast(1.05)}
     .leaflet-container{font-family:Inter,system-ui,sans-serif;background:#0c1418}
     .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#091522;color:var(--text);border:1px solid var(--line);box-shadow:0 10px 30px #000a}
-    .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.5;max-width:min(300px,78vw);overflow-wrap:break-word}
+    .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.5;max-width:min(300px,78vw);overflow-wrap:break-word;max-height:min(44vh,320px);overflow-y:auto;overscroll-behavior:contain}
     .leaflet-popup-content-wrapper{max-width:84vw}
     .pop .px{overflow-wrap:break-word}
-    .leaflet-container a.leaflet-popup-close-button{color:var(--muted);font-size:20px;padding:6px 8px 0 0}
+    .leaflet-container a.leaflet-popup-close-button{color:var(--muted);font-size:22px;width:30px;height:30px;padding:5px 8px 0 0;z-index:1}
     .pop .pt{color:var(--dim);font:700 11px ui-monospace,Menlo,monospace;margin-bottom:4px}
     .pop .pl{margin-top:7px;color:#ffb48f;font-size:12px;font-weight:700}
     .pop .pl small{color:var(--muted);font-weight:600}
@@ -1636,7 +1636,13 @@ function pinIcon(inc){
     html:`<div class="pin${inc.precise||res||inc.line?'':' approx'}${inc.inZone&&!res?' zone':''}" style="width:${sz}px;height:${sz}px;background:${pieBg(incCols(inc))}"></div>`});
 }
 // keep popups clear of the floating panels
-function popPad(){const w=innerWidth<=760;return{autoPanPaddingTopLeft:w?[10,190]:[430,110],autoPanPaddingBottomRight:w?[10,innerHeight*0.35]:[390,30]}}
+function popPad(){const w=innerWidth<=760;
+  const hb=((document.querySelector('header')||{}).offsetHeight||190)+22; // clear the actual header (it varies with wrap/equalizer)
+  return{autoPanPaddingTopLeft:w?[12,hb]:[430,110],autoPanPaddingBottomRight:w?[12,Math.round(innerHeight*0.34)]:[390,30]}}
+// A popup opened while the map is still panning to it (a new call, or a tapped
+// notification) can compute its auto-pan against a stale position and land under
+// the header. Re-run the popup's auto-pan once things settle so it's never cut off.
+map.on('popupopen',e=>{const p=e.popup;const fix=()=>{try{p._map&&p._adjustPan&&p._adjustPan()}catch{}};setTimeout(fix,360);setTimeout(fix,780)});
 function callPopup(entry,r){
   const inc=entry&&entry.inc,n=inc?inc.entries.length:1,st=inc&&inc.status==='resolved'?'<span style="color:var(--green)"> · RESOLVED</span>':'';
   return `<div class="pop"><div class="pt">${fmtTime(entry.time)}${entry.kinds.length?' · '+entry.kinds.map(k=>`<span style="color:${typeColor(k)}">${esc(k)}</span>`).join(' + '):''}${st}${n>1?` · ${n} calls`:''}</div><div class="px">${renderText(entry)}</div>${r?`<div class="pl">📍 ${esc(r.label)} <small>${r.precise?'':'(approximate)'}</small></div>`:''}</div>`;
