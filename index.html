@@ -3139,7 +3139,7 @@ async function play(){
 function stop(){listening=false;SEG.running=false;stopTabCapture();pbStop();stopSound();keepAwake(false);state('STOPPED');$('start').textContent='START LISTENING';setRadioLevel(0,'reset');try{if(P2P.mode==='host')p2pStop()}catch{}}
 // One control: start serving (become the account's single host), take over from
 // another device, or stop. A device never processes the stream without hosting.
-$('start').onclick=()=>{(listening||P2P.mode==='host')?stop():becomeHost()};
+$('start').onclick=()=>{(listening||P2P.mode==='host')?stop():(store.get('authToken')?becomeHost():play())}; // guests just listen locally; signed-in devices also host to the account for sync
 function paintStartBtn(){const b=$('start');if(!b)return;b.textContent=(listening||P2P.mode==='host')?'STOP':(P2P.mode==='follow'?'TAKE OVER':'START LISTENING');b.classList.toggle('takeover',P2P.mode==='follow')}
 $('optSound').onchange=()=>{store.set('sound',$('optSound').checked);
   if(P2P.mode==='follow'){try{if(hostAudioEl)hostAudioEl.muted=!$('optSound').checked}catch{}state($('optSound').checked?'FOLLOWING HOST':'FOLLOWING · MUTED',true);return}
